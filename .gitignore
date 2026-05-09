@@ -1,0 +1,71 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!src/**/build/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+.gradletasknamecache
+
+# Kotlin
+.kotlin/
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+release/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local config (SDK paths, signing, secrets)
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# IDE - IntelliJ / Android Studio
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+
+# IDE - VSCode / Eclipse / NetBeans
+.vscode/
+.classpath
+.project
+.settings/
+.metadata/
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# Python helper scripts artifacts
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
