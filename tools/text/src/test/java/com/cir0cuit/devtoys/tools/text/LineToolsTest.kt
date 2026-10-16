@@ -1,6 +1,7 @@
 package com.cir0cuit.devtoys.tools.text
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LineToolsTest {
@@ -88,5 +89,88 @@ class LineToolsTest {
     @Test
     fun unknownOperationReturnsInputUnchanged() {
         assertEquals("b\na\n", applyLineOperation("b\na\n", "Nope"))
+    }
+
+    @Test
+    fun naturalCaseInsensitiveAndLengthSorts() {
+        assertEquals("file2\nfile10\nfile010b", applyLineOperation("file10\nfile010b\nfile2", "Natural"))
+        assertEquals("a\nB\nc", applyLineOperation("c\nB\na", "Sort Ci"))
+        assertEquals("b\naa\nccc\n", applyLineOperation("ccc\naa\nb\n", "Sort Length"))
+    }
+
+    @Test
+    fun shuffleKeepsTheSameLines() {
+        val out = applyLineOperation("1\n2\n3\n4\n", "Shuffle")
+        assertEquals(listOf("1", "2", "3", "4"), out.removeSuffix("\n").lines().sorted())
+        assertTrue(out.endsWith("\n"))
+    }
+
+    @Test
+    fun dedupeVariantsAndCounts() {
+        assertEquals("Apple\npear", applyLineOperation("Apple\napple\npear", "Dedupe Ci"))
+        assertEquals("a\nb", applyLineOperation("a\nb\na\nc\nb", "Duplicates"))
+        assertEquals("3 a\n1 b", applyLineOperation("a\nb\na\na", "Count Each"))
+        assertEquals("12 x\n 1 y", applyLineOperation((List(12) { "x" } + "y").joinToString("\n"), "Count Each"))
+    }
+
+    @Test
+    fun trimBlankAndNumbering() {
+        assertEquals("a\nb\n", applyLineOperation("a\n  \n\nb\n", "Remove Blank"))
+        assertEquals("a\nb", applyLineOperation("  a \n\tb", "Trim"))
+        assertEquals("  a\nb", applyLineOperation("  a  \nb\t", "Trim End"))
+        val numbered = applyLineOperation((1..10).joinToString("\n") { "l$it" }, "Number")
+        assertTrue(numbered, numbered.startsWith(" 1. l1\n"))
+        assertTrue(numbered, numbered.endsWith("10. l10"))
+        assertEquals((1..10).joinToString("\n") { "l$it" }, applyLineOperation(numbered, "Unnumber"))
+    }
+
+    @Test
+    fun filterPlainRegexIgnoreCaseAndInvert() {
+        val log = "E/App: boom\nI/App: ok\ne/Net: fail\n"
+        assertEquals("E/App: boom\n", applyLineOperation(log, "Filter", LineOptions(pattern = "E/")))
+        assertEquals("E/App: boom\ne/Net: fail\n", applyLineOperation(log, "Filter", LineOptions(pattern = "e/", ignoreCase = true)))
+        assertEquals("I/App: ok\n", applyLineOperation(log, "Filter", LineOptions(pattern = "^[Ee]/", regex = true, invert = true)))
+        assertEquals("", applyLineOperation(log, "Filter", LineOptions(pattern = "zzz")))
+    }
+
+    @Test
+    fun filterResultCountsAndInvalidRegexError() {
+        val r = computeLines("a\nb\nab\n", "Filter", LineOptions(pattern = "a"))
+        assertEquals(2, r.outputLines)
+        assertEquals(3, r.inputLines)
+        val bad = computeLines("a", "Filter", LineOptions(pattern = "(", regex = true))
+        assertTrue(bad.error!!.startsWith("Invalid regex"))
+    }
+
+    @Test
+    fun joinWithQuoteWrapAndEscapedSeparator() {
+        assertEquals("('a', 'b')", applyLineOperation("a\n b \n\n", "Join", LineOptions(quote = "'", wrap = "()")))
+        assertEquals("[\"a\",\"b\"]", applyLineOperation("a\nb", "Join", LineOptions(separator = ",", quote = "\"", wrap = "[]")))
+        assertEquals("a\tb", applyLineOperation("a\nb", "Join", LineOptions(separator = "\t")))
+    }
+
+    @Test
+    fun splitByDelimiterWhitespaceAndRegex() {
+        assertEquals("a\nb\nc", applyLineOperation("a, b,,c", "Split"))
+        assertEquals("a\nb\nc", applyLineOperation("a  b\tc", "Split", LineOptions(delimiter = "")))
+        assertEquals("a\nb\nc", applyLineOperation("a1b22c", "Split", LineOptions(delimiter = """\d+""", regex = true)))
+        assertEquals("a.b", applyLineOperation("a.b", "Split", LineOptions(delimiter = ";")))
+    }
+
+    @Test
+    fun lineEndingAndWhitespaceFixes() {
+        assertEquals("a\nb\n", applyLineOperation("a\r\nb\r\n", "To LF"))
+        assertEquals("a\r\nb\r\n", applyLineOperation("a\nb\r\n", "To CRLF"))
+        assertEquals("x", applyLineOperation("\uFEFFx", "Remove BOM"))
+        assertEquals("a   b\n    c", applyLineOperation("a\tb\n\tc", "Tabs To Spaces"))
+        assertEquals("a b\n  c", applyLineOperation("a\tb\n\tc", "Tabs To Spaces", LineOptions(tabWidth = 2)))
+        assertEquals("\t\t  x\ny", applyLineOperation("          x\ny", "Spaces To Tabs"))
+    }
+
+    @Test
+    fun describesLineEndingsAndBom() {
+        assertEquals("", describeLineEnding("a\nb\n"))
+        assertEquals("CRLF", describeLineEnding("a\r\nb"))
+        assertEquals("Mixed line endings, BOM", describeLineEnding("\uFEFFa\r\nb\n"))
     }
 }

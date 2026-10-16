@@ -8,7 +8,7 @@ import java.util.Locale
 
 class TextDiffTest {
 
-    private fun diff(old: String, new: String) = buildDiff(old, new).text
+    private fun diff(old: String, new: String, options: DiffOptions = DiffOptions()) = buildDiff(old, new, options).text
 
     @Test
     fun bothEmptyAsksForInput() {
@@ -108,5 +108,53 @@ class TextDiffTest {
         val out = diff("100%d\n%s", "100%d\n%n")
         assertTrue(out, out.contains("- %s\n"))
         assertTrue(out, out.contains("+ %n\n"))
+    }
+
+    @Test
+    fun ignoreOptionsTreatNormalizedLinesAsEqual() {
+        assertEquals("Texts are identical.", diff("Foo\nbar", "foo\nBAR", DiffOptions(ignoreCase = true)))
+        assertEquals("Texts are identical.", diff("  a\nb  ", "a\nb", DiffOptions(trim = true)))
+        assertEquals("Texts are identical.", diff("f(a, b)", "f( a,b )", DiffOptions(ignoreAllSpace = true)))
+        assertTrue(diff("a\nb", "A\nb").contains("- a\n"))
+    }
+
+    @Test
+    fun ignoringBlankLinesKeepsOriginalLineNumbers() {
+        assertEquals("Texts are identical.", diff("a\n\nb", "a\nb\n\n", DiffOptions(ignoreBlankLines = true)))
+        val out = diff("a\n\nb\nc", "a\nb\nX", DiffOptions(ignoreBlankLines = true))
+        assertTrue(out, out.contains("   3 |    2 |   b\n"))
+        assertTrue(out, out.contains("   4 |      | - c\n"))
+        assertTrue(out, out.contains("     |    3 | + X\n"))
+    }
+
+    @Test
+    fun inlineRangesMarkOnlyTheChangedWordOrCharacter() {
+        val (a, b) = changedRanges("val count = 10", "val total = 10", byChar = false)
+        assertEquals(listOf(4..8), a)
+        assertEquals(listOf(4..8), b)
+        val (c, d) = changedRanges("color", "colour", byChar = true)
+        assertTrue(c.isEmpty())
+        assertEquals(listOf(4..4), d)
+    }
+
+    @Test
+    fun inlineHighlightIsAddedToChangedLines() {
+        val styled = buildDiff("a\nhello world\nc", "a\nhello there\nc")
+        assertTrue(styled.spanStyles.size > 2)
+    }
+
+    @Test
+    fun summaryCountsAddedRemovedAndChanges() {
+        assertEquals("+2 \u22121 lines, 2 changes", computeDiff("a\nb\nc\nd\ne\nf\ng\nh", "a\nB\nc\nd\ne\nf\ng\nh\ni").summary)
+        assertEquals(null, computeDiff("a", "a").summary)
+    }
+
+    @Test
+    fun unifiedDiffIsGitApplyCompatible() {
+        val expected = "--- a/text\n+++ b/text\n@@ -1,3 +1,3 @@\n a\n-b\n+X\n c\n"
+        assertEquals(expected, unifiedDiff("a\nb\nc\n", "a\nX\nc\n").first)
+        assertEquals("--- a/text\n+++ b/text\n@@ -0,0 +1,1 @@\n+x\n", unifiedDiff("", "x\n").first)
+        assertEquals("", unifiedDiff("same\n", "same\n").first)
+        assertEquals("", unifiedDiff("A \n", "a\n", DiffOptions(ignoreCase = true, trim = true)).first)
     }
 }
