@@ -1,56 +1,65 @@
 package com.cir0cuit.devtoys.tools.encoders
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Html
-import androidx.compose.material.icons.filled.ContentCopy
-
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import com.cir0cuit.devtoys.core.ui.*
-import com.cir0cuit.devtoys.tools.base.*
+import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
+import com.cir0cuit.devtoys.core.ui.MonoTextField
+import com.cir0cuit.devtoys.core.ui.ToolScaffold
+import com.cir0cuit.devtoys.tools.base.Tool
+import com.cir0cuit.devtoys.tools.base.ToolCategory
+import com.cir0cuit.devtoys.tools.base.ToolDescriptor
 
 internal object HtmlEntityCodec {
     private val namedEntities: Map<Int, String> by lazy {
-        val map = mutableMapOf<Int, String>()
-        HtmlEntityData.categoriesMap.values.flatten().forEach { (charStr, entity) ->
-            if (charStr.isNotEmpty() && charStr.codePointCount(0, charStr.length) == 1) map[charStr.codePointAt(0)] = entity
-        }
-        map
+        HtmlEntityData.categoriesMap.values.flatten()
+            .filter { (s, _) -> s.isNotEmpty() && s.codePointCount(0, s.length) == 1 }
+            .associate { (s, entity) -> s.codePointAt(0) to entity }
     }
     private val reverseEntities: Map<String, String> by lazy {
         HtmlEntityData.categoriesMap.values.flatten().associate { (symbol, entity) -> entity to symbol }
     }
     private val entityRegex = Regex("&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
+    private val windows1252 = charset("windows-1252")
 
-    fun encode(input: String): String {
-        if (input.isEmpty()) return ""
-        val sb = java.lang.StringBuilder()
+    fun encode(input: String): String = buildString {
         var i = 0
         while (i < input.length) {
             val cp = input.codePointAt(i)
-            if (cp == 39) {
-                sb.append("&#39;")
-            } else if (cp > 127 || cp == 34 || cp == 38 || cp == 60 || cp == 62) {
-                sb.append(namedEntities[cp] ?: "&#$cp;")
-            } else {
-                sb.append(cp.toChar())
+            when {
+                cp == '\''.code -> append("&#39;")
+                cp > 127 || cp == '"'.code || cp == '&'.code || cp == '<'.code || cp == '>'.code -> append(namedEntities[cp] ?: "&#$cp;")
+                else -> append(cp.toChar())
             }
-            i += java.lang.Character.charCount(cp)
+            i += Character.charCount(cp)
         }
-        return sb.toString()
     }
 
     fun decode(input: String): String =
@@ -66,98 +75,70 @@ internal object HtmlEntityCodec {
                 else -> String(Character.toChars(cp))
             }
         }
-
-    private val windows1252 = charset("windows-1252")
 }
 
 class HtmlEntityTool : Tool {
-    override val descriptor = ToolDescriptor("html-entity", android.R.string.untitled, android.R.string.untitled, Icons.Default.Html, ToolCategory.ENCODERS_DECODERS, listOf("html", "entity", "encode"))
-    
-    // Using the massive exhaustive entity map from HtmlEntityData
+    override val descriptor = ToolDescriptor(
+        id = "html-entity",
+        title = "HTML Entity Encoder",
+        description = "Escape and unescape HTML entities",
+        icon = Icons.Default.Html,
+        category = ToolCategory.ENCODERS_DECODERS,
+        keywords = listOf("html", "entity", "encode")
+    )
 
-
-    @Composable override fun Content(modifier: Modifier) {
-        var tabIndex by rememberSaveable { mutableStateOf(0) }
-        
-        ToolScaffold("HTML Entity", modifier = modifier, scrollable = false) {
-            TabRow(selectedTabIndex = tabIndex) {
-                Tab(selected = tabIndex == 0, onClick = { tabIndex = 0 }, text = { Text("Encoder/Decoder") })
-                Tab(selected = tabIndex == 1, onClick = { tabIndex = 1 }, text = { Text("Entity List") })
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            if (tabIndex == 0) {
-                EncoderDecoder()
-            } else {
-                EntityList()
-            }
+    @Composable
+    override fun Content(modifier: Modifier) {
+        ToolScaffold(descriptor.title, modifier = modifier, scrollable = false) {
+            EncodeDecodePane(HtmlEntityCodec::encode, HtmlEntityCodec::decode, extraMode = "Entities") { EntityList() }
         }
     }
 
-    @Composable fun EncoderDecoder() {
-        var encodeInput by rememberSaveableText()
-        var decodeInput by rememberSaveableText()
-        var isEncodeMode by rememberSaveable { mutableStateOf(true) }
-
-        val encodeOutput = remember(encodeInput) { HtmlEntityCodec.encode(encodeInput) }
-        val decodeOutput = remember(decodeInput) { HtmlEntityCodec.decode(decodeInput) }
-
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            TabRow(selectedTabIndex = if (isEncodeMode) 0 else 1) {
-                Tab(selected = isEncodeMode, onClick = { isEncodeMode = true }, text = { Text("Encode") })
-                Tab(selected = !isEncodeMode, onClick = { isEncodeMode = false }, text = { Text("Decode") })
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            if (isEncodeMode) {
-                MonoTextField(encodeInput, { encodeInput = it }, "Input to Encode")
-                Spacer(modifier = Modifier.height(16.dp))
-                OutputPanel(encodeOutput)
-            } else {
-                MonoTextField(decodeInput, { decodeInput = it }, "Input to Decode")
-                Spacer(modifier = Modifier.height(16.dp))
-                OutputPanel(decodeOutput)
-            }
-        }
-    }
-
-    @Composable fun EntityList() {
+    @Composable
+    private fun EntityList() {
         val expandedState = remember { mutableStateMapOf<String, Boolean>() }
-        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+        var query by rememberSaveable { mutableStateOf("") }
+        val clipboardManager = LocalClipboardManager.current
+        val matches = remember(query) {
+            val q = query.trim()
+            if (q.isEmpty()) emptyList()
+            else HtmlEntityData.categoriesMap.values.flatten().filter { (symbol, code) -> symbol == q || code.contains(q, ignoreCase = true) }
+        }
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            HtmlEntityData.categoriesMap.forEach { (catName, entities) ->
-                val isExpanded = expandedState[catName] ?: false
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable { expandedState[catName] = !isExpanded },
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(catName, fontWeight = FontWeight.Bold)
-                            Icon(if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null)
-                        }
+        @Composable
+        fun EntityRow(symbol: String, code: String) {
+            ListItem(
+                headlineContent = { Text(code, style = CodeTextStyle) },
+                leadingContent = { Text(symbol, style = MaterialTheme.typography.titleLarge) },
+                trailingContent = {
+                    Row {
+                        TextButton(onClick = { clipboardManager.setText(AnnotatedString(symbol)) }) { Text("Symbol") }
+                        TextButton(onClick = { clipboardManager.setText(AnnotatedString(code)) }) { Text("Code") }
                     }
-                }
-                if (isExpanded) {
-                    items(entities) { entity ->
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            )
+        }
+
+        MonoTextField(query, { query = it }, "Search by name or symbol", minLines = 1, maxLines = 1)
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            if (query.isNotBlank()) {
+                if (matches.isEmpty()) item { Text("No entity matches \"${query.trim()}\".", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(matches) { (symbol, code) -> EntityRow(symbol, code) }
+            } else {
+                HtmlEntityData.categoriesMap.forEach { (catName, entities) ->
+                    val isExpanded = expandedState[catName] ?: false
+                    item(key = catName) {
                         ListItem(
-                            headlineContent = { Text(entity.second) },
-                            leadingContent = { Text(entity.first, style = MaterialTheme.typography.headlineSmall) },
-                            trailingContent = {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    AssistChip(
-                                        onClick = { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(entity.first)) },
-                                        label = { Text("Symbol") },
-                                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = "Copy Symbol", modifier = Modifier.size(16.dp)) }
-                                    )
-                                    AssistChip(
-                                        onClick = { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(entity.second)) },
-                                        label = { Text("Code") },
-                                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = "Copy Code", modifier = Modifier.size(16.dp)) }
-                                    )
-                                }
-                            }
+                            headlineContent = { Text(catName, style = MaterialTheme.typography.titleSmall) },
+                            supportingContent = { Text("${entities.size} entities") },
+                            trailingContent = { Icon(if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null) },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable { expandedState[catName] = !isExpanded }
                         )
                     }
+                    if (isExpanded) items(entities) { (symbol, code) -> EntityRow(symbol, code) }
                 }
             }
         }

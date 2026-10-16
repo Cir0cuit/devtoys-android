@@ -1,8 +1,8 @@
 package com.cir0cuit.devtoys.tools.data
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.SyncAlt
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
@@ -15,18 +15,19 @@ import org.yaml.snakeyaml.DumperOptions
 import org.json.JSONArray
 import org.json.JSONObject
 import com.google.gson.JsonElement
-import com.google.gson.JsonParser
-import com.google.gson.Strictness
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
+import android.util.Base64
+import java.math.BigDecimal
+import java.math.BigInteger
+import java.time.format.DateTimeFormatter
+import java.util.Date
 
 class YamlJsonTool : Tool {
-    override val descriptor = ToolDescriptor("yaml-json", android.R.string.untitled, android.R.string.untitled, Icons.Default.SyncAlt, ToolCategory.CONVERTERS, listOf("yaml", "json", "converter"))
+    override val descriptor = ToolDescriptor("yaml-json", "YAML ↔ JSON", "Convert between YAML and JSON", Icons.Default.SyncAlt, ToolCategory.CONVERTERS, listOf("yaml", "json", "converter"))
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
-        var yamlInput by rememberSaveable { mutableStateOf("") }
+        var yamlInput by rememberSaveable { mutableStateOf("name: devtoys\ntags:\n  - yaml\n  - json\nstars: 42\n") }
         var jsonInput by rememberSaveable { mutableStateOf("") }
         var toYaml by rememberSaveable { mutableStateOf(false) }
-        
         val jsonOutput = remember(yamlInput) {
             if (yamlInput.isEmpty()) "" else try {
                 val obj = Yaml().load<Any?>(yamlInput)
@@ -40,10 +41,7 @@ class YamlJsonTool : Tool {
         }
         val yamlOutput = remember(jsonInput) {
             if (jsonInput.isEmpty()) "" else try {
-                val reader = JsonReader(java.io.StringReader(jsonInput)).apply { setStrictness(Strictness.STRICT) }
-                val parsed = JsonParser.parseReader(reader)
-                if (reader.peek() != JsonToken.END_DOCUMENT) throw IllegalArgumentException("Unexpected trailing content")
-                val obj = jsonToPlain(parsed)
+                val obj = jsonToPlain(parseStrictJson(jsonInput))
                 val options = DumperOptions().apply {
                     defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
                     indent = 2
@@ -52,21 +50,31 @@ class YamlJsonTool : Tool {
                 Yaml(options).dump(obj)
             } catch (e: Exception) { "Error: ${e.message}" }
         }
-        
-        ToolScaffold("YAML ↔ JSON Converter", modifier = modifier) {
-            TabRow(selectedTabIndex = if (toYaml) 1 else 0) {
-                Tab(selected = !toYaml, onClick = { toYaml = false }, text = { Text("YAML to JSON") })
-                Tab(selected = toYaml, onClick = { toYaml = true }, text = { Text("JSON to YAML") })
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("YAML to JSON", "JSON to YAML").forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = toYaml == (i == 1),
+                        onClick = { toYaml = i == 1 },
+                        shape = SegmentedButtonDefaults.itemShape(i, 2)
+                    ) { Text(label, maxLines = 1) }
+                }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            if (toYaml) {
-                MonoTextField(jsonInput, { jsonInput = it }, "JSON Input")
-                Spacer(modifier = Modifier.height(16.dp))
-                OutputPanel(yamlOutput)
-            } else {
-                MonoTextField(yamlInput, { yamlInput = it }, "YAML Input")
-                Spacer(modifier = Modifier.height(16.dp))
-                OutputPanel(jsonOutput)
+            val output = if (toYaml) yamlOutput else jsonOutput
+            if (toYaml) PasteableInput(jsonInput, { jsonInput = it }, "JSON input")
+            else PasteableInput(yamlInput, { yamlInput = it }, "YAML input")
+            Spacer(modifier = Modifier.height(8.dp))
+            ResultPanel(output, label = if (toYaml) "YAML" else "JSON")
+            if (output.isNotEmpty() && !output.startsWith("Error: ")) {
+                TextButton(onClick = {
+                    if (toYaml) yamlInput = output else jsonInput = output
+                    toYaml = !toYaml
+                }) {
+                    Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                    Text("Use result as input")
+                }
             }
         }
     }
@@ -76,9 +84,9 @@ private fun yamlToJson(v: Any?): Any = when (v) {
     null -> JSONObject.NULL
     is Map<*, *> -> JSONObject().also { o -> v.forEach { (k, x) -> o.put(k?.toString() ?: "null", yamlToJson(x)) } }
     is Collection<*> -> JSONArray().also { a -> v.forEach { a.put(yamlToJson(it)) } }
-    is Array<*> -> JSONArray().also { a -> v.forEach { a.put(yamlToJson(it)) } }
-    is ByteArray -> android.util.Base64.encodeToString(v, android.util.Base64.NO_WRAP)
-    is java.util.Date -> java.time.format.DateTimeFormatter.ISO_INSTANT.format(v.toInstant())
+    is Array<*> -> yamlToJson(v.asList())
+    is ByteArray -> Base64.encodeToString(v, Base64.NO_WRAP)
+    is Date -> DateTimeFormatter.ISO_INSTANT.format(v.toInstant())
     is Number -> if (v.toDouble().let { it.isNaN() || it.isInfinite() }) v.toString() else v
     is Boolean, is String -> v
     else -> v.toString()
@@ -92,8 +100,8 @@ internal fun jsonToPlain(v: JsonElement): Any? = when {
         when {
             p.isBoolean -> p.asBoolean
             p.isNumber -> p.asString.let { n ->
-                if (n.any { it == '.' || it == 'e' || it == 'E' }) java.math.BigDecimal(n)
-                else java.math.BigInteger(n).let { if (it.bitLength() < 64) it.toLong() else it }
+                if (n.any { it == '.' || it == 'e' || it == 'E' }) BigDecimal(n)
+                else BigInteger(n).let { if (it.bitLength() < 64) it.toLong() else it }
             }
             else -> p.asString
         }

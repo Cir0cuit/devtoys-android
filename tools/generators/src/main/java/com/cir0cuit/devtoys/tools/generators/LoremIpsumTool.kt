@@ -2,7 +2,6 @@ package com.cir0cuit.devtoys.tools.generators
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Abc
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
@@ -25,18 +24,17 @@ internal fun generateLorem(sentences: Int, random: Random): String =
     }
 
 class LoremIpsumTool : Tool {
-    override val descriptor = ToolDescriptor("lorem-ipsum", android.R.string.untitled, android.R.string.untitled, Icons.Default.Abc, ToolCategory.GENERATORS, listOf("lorem", "ipsum", "text"))
+    override val descriptor = ToolDescriptor("lorem-ipsum", "Lorem Ipsum Generator", "Generate placeholder text", Icons.Default.Abc, ToolCategory.GENERATORS, listOf("lorem", "ipsum", "text"))
     @Composable override fun Content(modifier: Modifier) {
-        var count by rememberSaveable { mutableStateOf(5f) }
-        val sentences = count.toInt()
+        var sentences by rememberSaveable { mutableStateOf(5) }
         var seed by rememberSaveable { mutableStateOf(Random.nextInt()) }
         val output = remember(sentences, seed) { generateLorem(sentences, Random(seed)) }
-        ToolScaffold("Lorem Ipsum Generator", modifier = modifier) {
-            Text("Sentences: ${count.toInt()}")
-            Slider(value = count, onValueChange = { count = it }, valueRange = 1f..50f)
-            Button(onClick = { seed = Random.nextInt() }) { Text("Regenerate") }
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            SliderSetting("Sentences", sentences, 1..50) { sentences = it }
+            Spacer(modifier = Modifier.height(8.dp))
+            RegenerateButton("Regenerate") { seed = Random.nextInt() }
             Spacer(modifier = Modifier.height(16.dp))
-            OutputPanel(output)
+            OutputPanel(output, label = "Text")
         }
     }
 }

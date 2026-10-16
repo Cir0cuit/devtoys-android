@@ -8,88 +8,71 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 
 class ChmodCalculatorTool : Tool {
     override val descriptor = ToolDescriptor(
-        "chmod",
-        android.R.string.untitled,
-        android.R.string.untitled,
-        Icons.Default.AdminPanelSettings,
-        ToolCategory.NETWORK_SYSTEM,
-        listOf("chmod", "permissions", "linux", "octal")
+        id = "chmod",
+        title = "Chmod Calculator",
+        description = "Turn file permissions into chmod values",
+        icon = Icons.Default.AdminPanelSettings,
+        category = ToolCategory.NETWORK_SYSTEM,
+        keywords = listOf("chmod", "permissions", "linux", "octal")
     )
 
     @Composable
     override fun Content(modifier: Modifier) {
-        var ownerR by rememberSaveable { mutableStateOf(true) }
-        var ownerW by rememberSaveable { mutableStateOf(true) }
-        var ownerX by rememberSaveable { mutableStateOf(true) }
+        // Nine permission bits, owner rwx in the high bits: 0b111_101_101 = 755.
+        var mode by rememberSaveable { mutableIntStateOf(0b111_101_101) }
+        var octalText by rememberSaveable { mutableStateOf("755") }
+        val octal = "%03o".format(mode)
+        val symbolic = (8 downTo 0).joinToString("") { bit -> if (mode shr bit and 1 == 1) "rwx"[(8 - bit) % 3].toString() else "-" }
 
-        var groupR by rememberSaveable { mutableStateOf(true) }
-        var groupW by rememberSaveable { mutableStateOf(false) }
-        var groupX by rememberSaveable { mutableStateOf(true) }
-
-        var publicR by rememberSaveable { mutableStateOf(true) }
-        var publicW by rememberSaveable { mutableStateOf(false) }
-        var publicX by rememberSaveable { mutableStateOf(true) }
-
-        val octal = remember(ownerR, ownerW, ownerX, groupR, groupW, groupX, publicR, publicW, publicX) {
-            val o = (if (ownerR) 4 else 0) + (if (ownerW) 2 else 0) + (if (ownerX) 1 else 0)
-            val g = (if (groupR) 4 else 0) + (if (groupW) 2 else 0) + (if (groupX) 1 else 0)
-            val p = (if (publicR) 4 else 0) + (if (publicW) 2 else 0) + (if (publicX) 1 else 0)
-            "$o$g$p"
-        }
-
-        val symbolic = remember(ownerR, ownerW, ownerX, groupR, groupW, groupX, publicR, publicW, publicX) {
-            val o = "${if(ownerR) "r" else "-"}${if(ownerW) "w" else "-"}${if(ownerX) "x" else "-"}"
-            val g = "${if(groupR) "r" else "-"}${if(groupW) "w" else "-"}${if(groupX) "x" else "-"}"
-            val p = "${if(publicR) "r" else "-"}${if(publicW) "w" else "-"}${if(publicX) "x" else "-"}"
-            "$o$g$p"
-        }
-
-        ToolScaffold("Chmod Calculator", modifier = modifier) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                PermissionColumn("Owner", ownerR, ownerW, ownerX, { ownerR = it }, { ownerW = it }, { ownerX = it })
-                PermissionColumn("Group", groupR, groupW, groupX, { groupR = it }, { groupW = it }, { groupX = it })
-                PermissionColumn("Public", publicR, publicW, publicX, { publicR = it }, { publicW = it }, { publicX = it })
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            MonoTextField(
+                value = octalText,
+                onValueChange = { text ->
+                    octalText = text
+                    if (text.length == 3 && text.all { it in '0'..'7' }) mode = text.toInt(8)
+                },
+                label = "Octal",
+                minLines = 1,
+                maxLines = 1
+            )
+            if (octalText != octal) {
+                Text(
+                    "Enter three digits from 0 to 7, like 755.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+                )
             }
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            Text("Octal", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(8.dp))
-            OutputPanel(octal)
             Spacer(modifier = Modifier.height(16.dp))
-            
-            Text("Symbolic", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(8.dp))
-            OutputPanel(symbolic)
-        }
-    }
-
-    @Composable
-    private fun PermissionColumn(
-        title: String,
-        r: Boolean, w: Boolean, x: Boolean,
-        onR: (Boolean) -> Unit, onW: (Boolean) -> Unit, onX: (Boolean) -> Unit
-    ) {
-        Column(horizontalAlignment = Alignment.Start) {
-            Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp, start = 12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = r, onCheckedChange = onR)
-                Text("Read")
+                Spacer(Modifier.width(72.dp))
+                listOf("Read", "Write", "Execute").forEach {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = w, onCheckedChange = onW)
-                Text("Write")
+            listOf("Owner", "Group", "Public").forEachIndexed { row, who ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(who, style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(72.dp))
+                    for (col in 0..2) {
+                        val bit = 1 shl (8 - row * 3 - col)
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            Checkbox(checked = mode and bit != 0, onCheckedChange = {
+                                mode = mode xor bit
+                                octalText = "%03o".format(mode)
+                            })
+                        }
+                    }
+                }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = x, onCheckedChange = onX)
-                Text("Execute")
-            }
+            Spacer(modifier = Modifier.height(16.dp))
+            LabeledValueSlab(listOf("Symbolic" to symbolic, "Command" to "chmod $octal"))
         }
     }
 }

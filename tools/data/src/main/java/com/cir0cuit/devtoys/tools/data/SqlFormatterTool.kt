@@ -2,7 +2,6 @@ package com.cir0cuit.devtoys.tools.data
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Storage
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
@@ -12,15 +11,15 @@ import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 
 class SqlFormatterTool : Tool {
-    override val descriptor = ToolDescriptor("sql-formatter", android.R.string.untitled, android.R.string.untitled, Icons.Default.Storage, ToolCategory.FORMATTERS, listOf("sql", "format"))
+    override val descriptor = ToolDescriptor("sql-formatter", "SQL Formatter", "Break SQL queries into readable lines", Icons.Default.Storage, ToolCategory.FORMATTERS, listOf("sql", "format"))
     @Composable override fun Content(modifier: Modifier) {
-        var input by rememberSaveable { mutableStateOf("") }
+        var input by rememberSaveable { mutableStateOf("select id, name from users where active = 1 and age > 18 order by name") }
         val output = remember(input) {
             if (input.isEmpty()) "" else formatSql(input)
         }
-        ToolScaffold("SQL Formatter", modifier = modifier) {
-            MonoTextField(input, { input = it }, "SQL Input")
-            Spacer(modifier = Modifier.height(16.dp))
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            PasteableInput(input, { input = it }, "SQL input")
+            Spacer(modifier = Modifier.height(8.dp))
             OutputPanel(output)
         }
     }

@@ -4,20 +4,38 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.ui.MonoTextField
-import com.cir0cuit.devtoys.core.ui.OutputPanel
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -25,6 +43,7 @@ import com.cir0cuit.devtoys.tools.base.ToolDescriptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.security.MessageDigest
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -40,38 +59,37 @@ internal fun hashText(text: String): List<String> {
     return newHashDigests().map { it.digest(bytes).toLowerHex() }
 }
 
+private val NO_HASHES = List(HASH_ALGORITHMS.size) { "" }
+
 class HashCalculatorTool : Tool {
     override val descriptor = ToolDescriptor(
-        "hash",
-        android.R.string.untitled,
-        android.R.string.untitled,
-        Icons.Default.Lock,
-        ToolCategory.CRYPTOGRAPHY,
-        listOf("hash", "md5", "sha", "checksum", "file")
+        id = "hash",
+        title = "Hash / Checksum",
+        description = "Hash text or files with MD5 and SHA",
+        icon = Icons.Default.Lock,
+        category = ToolCategory.CRYPTOGRAPHY,
+        keywords = listOf("hash", "md5", "sha", "checksum", "file")
     )
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content(modifier: Modifier) {
         val context = LocalContext.current
-        
+
         var textInput by rememberSaveable { mutableStateOf("") }
         var fileUri by rememberSaveable { mutableStateOf<String?>(null) }
         var fileName by rememberSaveable { mutableStateOf<String?>(null) }
         var isFileMode by rememberSaveable { mutableStateOf(false) }
         var compareHash by rememberSaveable { mutableStateOf("") }
 
-        var md5 by remember { mutableStateOf("") }
-        var sha1 by remember { mutableStateOf("") }
-        var sha256 by remember { mutableStateOf("") }
-        var sha512 by remember { mutableStateOf("") }
+        var hashes by remember { mutableStateOf(NO_HASHES) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
         var isCalculating by remember { mutableStateOf(false) }
 
         val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             if (uri != null) {
                 fileUri = uri.toString()
-                
-                // Extract filename
-                var name = "Selected File"
+                var name = "Selected file"
                 if (uri.scheme == "content") {
                     context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) {
@@ -88,103 +106,86 @@ class HashCalculatorTool : Tool {
 
         LaunchedEffect(textInput, fileUri, isFileMode) {
             isCalculating = true
-            val result: List<String> = withContext(Dispatchers.IO) {
+            errorMessage = null
+            hashes = withContext(Dispatchers.IO) {
                 try {
-                    if ((!isFileMode && textInput.isEmpty()) || (isFileMode && fileUri == null)) {
-                        listOf("", "", "", "")
-                    } else {
-                        val digests = newHashDigests()
-
-                        if (!isFileMode) {
-                            val bytes = textInput.toByteArray()
-                            digests.forEach { it.update(bytes) }
-                        } else {
-                            val uri = Uri.parse(fileUri)
-                            context.contentResolver.openInputStream(uri)?.use { stream ->
+                    when {
+                        !isFileMode -> if (textInput.isEmpty()) NO_HASHES else hashText(textInput)
+                        fileUri == null -> NO_HASHES
+                        else -> {
+                            val digests = newHashDigests()
+                            val stream = context.contentResolver.openInputStream(Uri.parse(fileUri))
+                                ?: throw IOException("the file could not be opened")
+                            stream.use {
                                 val buffer = ByteArray(8192)
                                 while (true) {
                                     ensureActive()
-                                    val read = stream.read(buffer)
+                                    val read = it.read(buffer)
                                     if (read == -1) break
-                                    digests.forEach { it.update(buffer, 0, read) }
+                                    digests.forEach { d -> d.update(buffer, 0, read) }
                                 }
                             }
+                            digests.map { it.digest().toLowerHex() }
                         }
-
-                        digests.map { it.digest().toLowerHex() }
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    listOf("Error: ${e.message}", "", "", "")
+                    null
                 }
-            }
-            md5 = result[0]
-            sha1 = result[1]
-            sha256 = result[2]
-            sha512 = result[3]
+            } ?: NO_HASHES.also { errorMessage = "Could not read the file. Choose the file again." }
             isCalculating = false
         }
 
-        ToolScaffold("Hash / Checksum", modifier = modifier) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Input Type:", modifier = Modifier.padding(end = 16.dp))
-                FilterChip(selected = !isFileMode, onClick = { isFileMode = false }, label = { Text("Text") })
-                Spacer(modifier = Modifier.width(8.dp))
-                FilterChip(selected = isFileMode, onClick = { isFileMode = true }, label = { Text("File") })
+        val target = compareHash.trim()
+        val match = if (target.isEmpty()) null else HASH_ALGORITHMS.zip(hashes).firstOrNull { (_, v) -> v.isNotEmpty() && v.equals(target, ignoreCase = true) }?.first
+
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("Text", "File").forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = isFileMode == (i == 1),
+                        onClick = { isFileMode = i == 1 },
+                        shape = SegmentedButtonDefaults.itemShape(i, 2),
+                        label = { Text(label) }
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
             if (isFileMode) {
-                Button(onClick = { filePicker.launch("*/*") }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (fileName != null) "Selected: $fileName" else "Select File")
+                OutlinedButton(onClick = { filePicker.launch("*/*") }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(fileName ?: "Choose a file", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             } else {
-                MonoTextField(textInput, { textInput = it }, "Input Text", minLines = 4)
+                MonoTextField(textInput, { textInput = it }, "Text", minLines = 3)
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = compareHash,
                 onValueChange = { compareHash = it },
-                label = { Text("Compare with Checksum (optional)") },
+                label = { Text("Compare with a checksum (optional)") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (isCalculating) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Calculating...")
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            @Composable
-            fun HashOutput(name: String, value: String) {
-                val matches = compareHash.isNotBlank() && value.equals(compareHash.trim(), ignoreCase = true)
-                val color = if (matches) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
-                
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, style = MaterialTheme.typography.titleMedium, color = color)
-                    if (matches) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(Icons.Default.CheckCircle, contentDescription = "Match", tint = color, modifier = Modifier.size(20.dp))
+                textStyle = CodeTextStyle,
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                supportingText = if (target.isEmpty() || hashes == NO_HASHES) null else {
+                    {
+                        if (match != null) Text("Matches $match", color = MaterialTheme.colorScheme.primary)
+                        else Text("No match. Check that the checksum was copied in full.")
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutputPanel(value)
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+            )
+            Spacer(Modifier.height(16.dp))
 
-            HashOutput("MD5", md5)
-            HashOutput("SHA-1", sha1)
-            HashOutput("SHA-256", sha256)
-            HashOutput("SHA-512", sha512)
+            errorMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(16.dp))
+            }
+            if (isCalculating) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            ResultSlab(HASH_ALGORITHMS.zip(hashes), marked = match)
         }
     }
 }

@@ -1,169 +1,272 @@
 package com.cir0cuit.devtoys.tools.developer
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
+import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
+import kotlinx.coroutines.delay
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.IsoFields
+import java.util.Locale
+import kotlin.math.abs
 
-enum class InputFormat(val label: String) {
-    SECONDS("Seconds"),
-    MILLISECONDS("Milliseconds"),
-    TICKS("Ticks (100-ns)")
+/** .NET ticks at the Unix epoch. */
+private const val TICKS_EPOCH = 621355968000000000L
+
+/** ponytail: one slab per line, capped; switch to a LazyColumn if people paste thousands. */
+private const val MAX_BLOCKS = 50
+
+private val ZONES: List<ZoneId> by lazy {
+    (ZoneId.getAvailableZoneIds().filter { '/' in it && !it.startsWith("Etc/") && !it.startsWith("SystemV/") } + "UTC")
+        .sorted().map(ZoneId::of)
 }
 
-enum class OutputFormat(val label: String, val formatter: DateTimeFormatter) {
-    ISO_LOCAL("ISO 8601 (Local)", DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-    ISO_OFFSET("ISO 8601 (Offset)", DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-    RFC_1123("RFC 1123", DateTimeFormatter.RFC_1123_DATE_TIME),
-    CUSTOM_SIMPLE("Simple Date/Time", DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"))
+internal class ParsedTime(val kind: String, val instant: Instant)
+
+/**
+ * Reads one value: an integer is Unix seconds, milliseconds, microseconds, .NET ticks or nanoseconds,
+ * picked by magnitude; a decimal is Unix seconds; text is ISO 8601 or RFC 1123. Null when unreadable.
+ */
+internal fun parseTimestamp(text: String, zone: ZoneId): ParsedTime? = try {
+    val s = text.trim()
+    val v = s.toLongOrNull()
+    when {
+        v != null -> {
+            val a = if (v == Long.MIN_VALUE) Long.MAX_VALUE else abs(v)
+            when {
+                a < 100_000_000_000L -> ParsedTime("Unix seconds", Instant.ofEpochSecond(v))
+                a < 100_000_000_000_000L -> ParsedTime("Unix milliseconds", Instant.ofEpochMilli(v))
+                a < 100_000_000_000_000_000L ->
+                    ParsedTime("Unix microseconds", Instant.ofEpochSecond(Math.floorDiv(v, 1_000_000L), Math.floorMod(v, 1_000_000L) * 1000))
+                v in 100_000_000_000_000_000L until 1_000_000_000_000_000_000L -> (v - TICKS_EPOCH).let {
+                    ParsedTime(".NET ticks", Instant.ofEpochSecond(Math.floorDiv(it, 10_000_000L), Math.floorMod(it, 10_000_000L) * 100))
+                }
+                else -> ParsedTime("Unix nanoseconds", Instant.ofEpochSecond(Math.floorDiv(v, 1_000_000_000L), Math.floorMod(v, 1_000_000_000L)))
+            }
+        }
+        s.matches(Regex("-?\\d+\\.\\d+")) -> {
+            val d = BigDecimal(s)
+            val sec = d.setScale(0, RoundingMode.FLOOR)
+            ParsedTime("Unix seconds", Instant.ofEpochSecond(sec.longValueExact(), d.subtract(sec).movePointRight(9).toLong()))
+        }
+        else -> {
+            val iso = s.replaceFirst(Regex("^(\\d{4}-\\d{2}-\\d{2}) "), "$1T")
+            val city = cityName(zone)
+            runCatching { ParsedTime("ISO 8601", ZonedDateTime.parse(iso, DateTimeFormatter.ISO_ZONED_DATE_TIME).toInstant()) }.getOrNull()
+                ?: runCatching { ParsedTime("ISO 8601 without offset, read as $city time", LocalDateTime.parse(iso).atZone(zone).toInstant()) }.getOrNull()
+                ?: runCatching { ParsedTime("Date, start of day in $city", LocalDate.parse(iso).atStartOfDay(zone).toInstant()) }.getOrNull()
+                ?: ParsedTime("RFC 1123", ZonedDateTime.parse(s, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant())
+        }
+    }
+} catch (e: Exception) { null }
+
+/** "in 3 hours", "2 days ago", "now". */
+internal fun relativeTime(then: Instant, now: Instant): String {
+    val secs = Duration.between(now, then).seconds
+    if (secs == 0L) return "now"
+    val a = abs(secs)
+    val (size, unit) = listOf(31_536_000L to "year", 2_592_000L to "month", 604_800L to "week", 86_400L to "day", 3_600L to "hour", 60L to "minute", 1L to "second")
+        .first { a >= it.first }
+    val n = a / size
+    val text = "$n $unit" + if (n == 1L) "" else "s"
+    return if (secs > 0) "in $text" else "$text ago"
 }
 
-private const val SYSTEM_ZONE = "System"
+internal fun cityName(zone: ZoneId) = zone.id.substringAfterLast('/').replace('_', ' ')
+
+private fun offsetText(zone: ZoneId, at: Instant) = "UTC" + zone.rules.getOffset(at).id.let { if (it == "Z") "+00:00" else it }
+
+/** Labeled results for one instant; the offset comes from the zone rules at that instant, so DST is right. */
+internal fun timestampRows(t: Instant, zone: ZoneId, now: Instant): List<Pair<String, String>> {
+    val z = t.atZone(zone)
+    val ms = if (t.nano == 0) "" else ".SSS"
+    fun safe(f: () -> String) = runCatching(f).getOrDefault("Out of range")
+    return listOf(
+        "Local, ${cityName(zone)}" to safe { z.format(DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss$ms xxx")) },
+        "UTC" to safe { t.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss$ms 'UTC'")) },
+        "ISO 8601" to safe { z.toOffsetDateTime().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) },
+        "RFC 1123" to safe { z.format(DateTimeFormatter.RFC_1123_DATE_TIME) },
+        "Unix seconds" to t.epochSecond.toString(),
+        "Unix milliseconds" to safe { t.toEpochMilli().toString() },
+        "Relative" to relativeTime(t, now),
+        "Day and ISO week" to safe {
+            val day = z.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
+            String.format(Locale.ROOT, "%s, %d-W%02d", day, z.get(IsoFields.WEEK_BASED_YEAR), z.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR))
+        }
+    )
+}
 
 class TimestampTool : Tool {
-    override val descriptor = ToolDescriptor("timestamp", android.R.string.untitled, android.R.string.untitled, Icons.Default.Schedule, ToolCategory.CONVERTERS, listOf("time", "stamp", "date"))
-    
-    @OptIn(ExperimentalMaterial3Api::class)
+    override val descriptor = ToolDescriptor(
+        id = "timestamp",
+        title = "Timestamp Converter",
+        description = "Turn Unix timestamps into readable dates",
+        icon = Icons.Default.Schedule,
+        category = ToolCategory.CONVERTERS,
+        keywords = listOf("time", "stamp", "date", "unix", "epoch", "iso", "zone")
+    )
+
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf((System.currentTimeMillis() / 1000).toString()) }
-        var inputFormat by rememberSaveable { mutableStateOf(InputFormat.SECONDS) }
-        var outputFormat by rememberSaveable { mutableStateOf(OutputFormat.ISO_LOCAL) }
-        val systemZoneLabel = "System (${ZoneId.systemDefault().id})"
+        var zoneId by rememberSaveable { mutableStateOf(ZoneId.systemDefault().id) }
+        var picking by rememberSaveable { mutableStateOf(false) }
+        val zone = remember(zoneId) { runCatching { ZoneId.of(zoneId) }.getOrDefault(ZoneId.systemDefault()) }
+        val now by produceState(Instant.now()) { while (true) { delay(1000); value = Instant.now() } }
+        val lines = remember(input) { input.lines().map { it.trim() }.filter { it.isNotEmpty() } }
+        val parsed = remember(lines, zone) { lines.take(MAX_BLOCKS).map { it to parseTimestamp(it, zone) } }
 
-        var selectedUtc by rememberSaveable { mutableStateOf(SYSTEM_ZONE) }
-        var isSummerTime by rememberSaveable { mutableStateOf(false) }
-        
-        val zoneId = remember(selectedUtc, isSummerTime) {
-            if (selectedUtc == SYSTEM_ZONE) return@remember ZoneId.systemDefault()
-            val baseStr = selectedUtc.replace("UTC", "").replace("Z", "+00:00")
-            val baseOffset = try { java.time.ZoneOffset.of(if (baseStr.isEmpty()) "+00:00" else baseStr) } catch(e: Exception) { java.time.ZoneOffset.UTC }
-            val finalOffset = if (isSummerTime) java.time.ZoneOffset.ofTotalSeconds(baseOffset.totalSeconds + 3600) else baseOffset
-            ZoneId.ofOffset("UTC", finalOffset)
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            MonoTextField(input, { input = it }, "Timestamps or dates, one per line", minLines = 2, maxLines = 6)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = { picking = true }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Public, contentDescription = "Time zone", modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(cityName(zone), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                FilledTonalButton(onClick = { input = (System.currentTimeMillis() / 1000).toString() }) {
+                    Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text("Now")
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+
+            if (lines.isEmpty()) OutputPanel("", label = "Result", isCopyable = false)
+            parsed.forEachIndexed { i, (line, p) ->
+                if (i > 0) Spacer(Modifier.height(8.dp))
+                when {
+                    p == null -> ResultSlab(line, emptyList(), "Can't read this. Enter a Unix timestamp like 1792186953, or a date like 2026-10-16T21:42:33Z.")
+                    lines.size == 1 -> ResultSlab("Read as ${p.kind}", timestampRows(p.instant, zone, now))
+                    else -> ResultSlab("$line · ${p.kind}", timestampRows(p.instant, zone, now))
+                }
+            }
+            if (lines.size > MAX_BLOCKS) {
+                Text(
+                    "Showing the first $MAX_BLOCKS of ${lines.size} values.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
         }
 
-        val output = remember(input, inputFormat, outputFormat, zoneId) {
-            input.lines().map { line ->
-                val trimmed = line.trim()
-                if (trimmed.isEmpty()) "" else {
-                    try {
-                        val v = trimmed.toLongOrNull() ?: throw IllegalArgumentException("Invalid number")
-                        val inst = when (inputFormat) {
-                            InputFormat.SECONDS -> Instant.ofEpochSecond(v)
-                            InputFormat.MILLISECONDS -> Instant.ofEpochMilli(v)
-                            InputFormat.TICKS -> {
-                                val TICKS_EPOCH = 621355968000000000L
-                                val ticksSinceEpoch = v - TICKS_EPOCH
-                                val seconds = Math.floorDiv(ticksSinceEpoch, 10000000L)
-                                val nanos = Math.floorMod(ticksSinceEpoch, 10000000L) * 100L
-                                Instant.ofEpochSecond(seconds, nanos)
-                            }
-                        }
-                        inst.atZone(zoneId).format(outputFormat.formatter)
-                    } catch (e: Exception) { "Error: ${e.message}" }
+        if (picking) ZonePickerDialog(zone, onPick = { zoneId = it.id; picking = false }, onDismiss = { picking = false })
+    }
+}
+
+/** Recessed slab of tap-to-copy rows, label above value. */
+@Composable
+private fun ResultSlab(header: String, rows: List<Pair<String, String>>, error: String? = null) {
+    val clipboard = LocalClipboardManager.current
+    Surface(Modifier.fillMaxWidth(), color = LocalSlabColor.current, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            Text(
+                header,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            if (error != null) {
+                Text(
+                    error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+            rows.forEach { (label, value) ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClickLabel = "Copy $label") { clipboard.setText(AnnotatedString(value)) }
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(value, style = CodeTextStyle, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
-            }.filter { it.isNotEmpty() }.joinToString("\n")
+            }
         }
+    }
+}
 
-        ToolScaffold("Timestamp Converter", modifier = modifier, scrollable = false) {
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Input Format Dropdown
-                    var inExpanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(expanded = inExpanded, onExpandedChange = { inExpanded = !inExpanded }, modifier = Modifier.weight(1f)) {
-                        OutlinedTextField(
-                            value = inputFormat.label,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Input Format") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = inExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+@Composable
+private fun ZonePickerDialog(current: ZoneId, onPick: (ZoneId) -> Unit, onDismiss: () -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val now = remember { Instant.now() }
+    val matches = remember(query) { ZONES.filter { it.id.replace('_', ' ').contains(query.trim(), ignoreCase = true) } }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = AlertDialogDefaults.containerColor,
+            tonalElevation = AlertDialogDefaults.TonalElevation
+        ) {
+            Column(Modifier.padding(top = 24.dp, bottom = 8.dp)) {
+                Text("Time zone", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 24.dp))
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    query, { query = it },
+                    placeholder = { Text("Search city or region") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                if (matches.isEmpty()) {
+                    Text(
+                        "No time zone matches \"${query.trim()}\". Try a city name like Tokyo.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                    )
+                }
+                LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                    items(matches, key = { it.id }) { z ->
+                        ListItem(
+                            headlineContent = { Text(cityName(z)) },
+                            supportingContent = { Text("${z.id} · ${offsetText(z, now)}") },
+                            trailingContent = if (z == current) { { Icon(Icons.Default.Check, contentDescription = "Selected") } } else null,
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable { onPick(z) }
                         )
-                        ExposedDropdownMenu(expanded = inExpanded, onDismissRequest = { inExpanded = false }) {
-                            InputFormat.values().forEach { fmt ->
-                                DropdownMenuItem(
-                                    text = { Text(fmt.label) },
-                                    onClick = { inputFormat = fmt; inExpanded = false }
-                                )
-                            }
-                        }
-                    }
-
-                    // Output Format Dropdown
-                    var outExpanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(expanded = outExpanded, onExpandedChange = { outExpanded = !outExpanded }, modifier = Modifier.weight(1f)) {
-                        OutlinedTextField(
-                            value = outputFormat.label,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Output Format") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = outExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
-                        )
-                        ExposedDropdownMenu(expanded = outExpanded, onDismissRequest = { outExpanded = false }) {
-                            OutputFormat.values().forEach { fmt ->
-                                DropdownMenuItem(
-                                    text = { Text(fmt.label) },
-                                    onClick = { outputFormat = fmt; outExpanded = false }
-                                )
-                            }
-                        }
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // UTC Offset & Summer Time
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    var tzExpanded by remember { mutableStateOf(false) }
-                    
-                    val utcOffsets = remember {
-                        listOf(
-                            "-12:00", "-11:00", "-10:00", "-09:30", "-09:00", "-08:00", "-07:00", "-06:00", "-05:00", "-04:00", "-03:30", "-03:00", "-02:00", "-01:00",
-                            "+00:00", "+01:00", "+02:00", "+03:00", "+03:30", "+04:00", "+04:30", "+05:00", "+05:30", "+05:45", "+06:00", "+06:30", "+07:00", "+08:00", "+08:45", "+09:00", "+09:30", "+10:00", "+10:30", "+11:00", "+12:00", "+12:45", "+13:00", "+14:00"
-                        ).map { "UTC$it" }.let { listOf(SYSTEM_ZONE) + it }
-                    }
-
-                    ExposedDropdownMenuBox(expanded = tzExpanded, onExpandedChange = { tzExpanded = !tzExpanded }, modifier = Modifier.weight(1f)) {
-                        OutlinedTextField(
-                            value = if (selectedUtc == SYSTEM_ZONE) systemZoneLabel else selectedUtc,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Time Zone") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tzExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
-                        )
-                        ExposedDropdownMenu(expanded = tzExpanded, onDismissRequest = { tzExpanded = false }) {
-                            utcOffsets.forEach { zone ->
-                                DropdownMenuItem(
-                                    text = { Text(if (zone == SYSTEM_ZONE) systemZoneLabel else zone) },
-                                    onClick = { selectedUtc = zone; tzExpanded = false }
-                                )
-                            }
-                        }
-                    }
-                    
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                        Text("Summer time")
-                        Spacer(Modifier.width(8.dp))
-                        Switch(checked = isSummerTime && selectedUtc != SYSTEM_ZONE, onCheckedChange = { isSummerTime = it }, enabled = selectedUtc != SYSTEM_ZONE)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                MonoTextField(input, { input = it }, "Timestamp Input (One per line)")
-                Spacer(modifier = Modifier.height(16.dp))
-                OutputPanel(output)
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(end = 16.dp)) { Text("Cancel") }
             }
         }
     }

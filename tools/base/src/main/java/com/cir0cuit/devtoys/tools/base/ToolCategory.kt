@@ -1,12 +1,12 @@
 package com.cir0cuit.devtoys.tools.base
 
-enum class ToolCategory {
-    CONVERTERS,
-    ENCODERS_DECODERS,
-    FORMATTERS,
-    GENERATORS,
-    CRYPTOGRAPHY,
-    TEXT,
-    NETWORK_SYSTEM,
-    GRAPHICS
+enum class ToolCategory(val label: String) {
+    CONVERTERS("Converters"),
+    ENCODERS_DECODERS("Encoders & decoders"),
+    FORMATTERS("Formatters"),
+    GENERATORS("Generators"),
+    CRYPTOGRAPHY("Cryptography"),
+    TEXT("Text"),
+    NETWORK_SYSTEM("Network & system"),
+    GRAPHICS("Graphics")
 }

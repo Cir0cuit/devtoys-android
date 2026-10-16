@@ -1,7 +1,6 @@
 package com.cir0cuit.devtoys.core.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -13,7 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
+import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
+import com.cir0cuit.devtoys.core.designsystem.PlexMono
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,8 +37,7 @@ fun NumberedTextField(
     val interactionSource = remember { MutableInteractionSource() }
 
     Box(modifier = modifier
-        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), MaterialTheme.shapes.small)
-        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+        .background(LocalSlabColor.current, MaterialTheme.shapes.medium)
         .clickable(
             interactionSource = interactionSource,
             indication = null
@@ -48,7 +47,7 @@ fun NumberedTextField(
         .verticalScroll(verticalScrollState)
     ) {
         val sharedTextStyle = TextStyle(
-            fontFamily = FontFamily.Monospace,
+            fontFamily = PlexMono,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(

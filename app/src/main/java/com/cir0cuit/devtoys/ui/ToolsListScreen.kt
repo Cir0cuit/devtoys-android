@@ -1,148 +1,201 @@
 package com.cir0cuit.devtoys.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
 import com.cir0cuit.devtoys.data.SettingsRepository
+import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolRegistry
 import kotlinx.coroutines.launch
 
-
-fun getToolTitle(id: String): String {
-    return when(id) {
-        "base64" -> "Base64 Encoder / Decoder"
-        "uuid" -> "UUID Generator"
-        "url" -> "URL Encoder / Decoder"
-        "hex" -> "Hex Encoder / Decoder"
-        "json-formatter" -> "JSON Formatter"
-        "regex" -> "Regex Tester"
-        "hash" -> "Hash / Checksum"
-        "jwt" -> "JWT Decoder"
-        "timestamp" -> "Timestamp Converter"
-        "case" -> "Case Converter"
-        "html-entity" -> "HTML Entity Encoder"
-        "rot13" -> "ROT13 / Caesar Cipher"
-        "qr-gen" -> "QR Code Generator"
-        "text-diff" -> "Text Comparer"
-        "line-tools" -> "Line Tools"
-        "yaml-json" -> "YAML ↔ JSON"
-        "xml-formatter" -> "XML Formatter"
-        "password-gen" -> "Password Generator"
-        "hmac" -> "HMAC Calculator"
-        "cron" -> "Cron Parser & Builder"
-        "color-picker" -> "Color Converter"
-        "markdown" -> "Markdown Previewer & Editor"
-        "cheatsheet" -> "Cheatsheets"
-        "http-status" -> "HTTP Status Codes"
-        "sql-formatter" -> "SQL Formatter"
-        "csv-viewer" -> "CSV Viewer & Converter"
-        "json-types" -> "JSON to Kotlin Types"
-        "base-converter" -> "Base Converter"
-        "lorem-ipsum" -> "Lorem Ipsum Generator"
-        "mac" -> "MAC Formatter & Vendor ID"
-        "cidr" -> "CIDR Calculator"
-        "chmod" -> "Chmod Calculator"
-        "x509" -> "X.509 Certificate Decoder"
-        "color-palette" -> "Color Palette Generator"
-        "image-base64" -> "Image ↔ Base64"
-        else -> id.replace("-", " ").replaceFirstChar { it.uppercase() }
-    }
+internal fun Tool.matches(query: String): Boolean = with(descriptor) {
+    title.contains(query, ignoreCase = true) ||
+        description.contains(query, ignoreCase = true) ||
+        keywords.any { it.contains(query, ignoreCase = true) }
 }
 
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ToolsListScreen(
     toolRegistry: ToolRegistry,
     settingsRepository: SettingsRepository,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
-    expandedCategories: MutableMap<String, Boolean>,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    onToolClick: (com.cir0cuit.devtoys.tools.base.Tool) -> Unit
+    onToolClick: (Tool) -> Unit
 ) {
     val allTools = toolRegistry.getAllTools()
-    val favorites by settingsRepository.favoriteTools.collectAsState(initial = emptySet())
+    val favorites by settingsRepository.favoriteTools.collectAsState()
+    val recentIds by settingsRepository.recentTools.collectAsState()
     val scope = rememberCoroutineScope()
+    val query = searchQuery.trim()
 
-    val filteredTools = allTools.filter { tool ->
-        getToolTitle(tool.descriptor.id).contains(searchQuery, ignoreCase = true) ||
-        tool.descriptor.keywords.any { it.contains(searchQuery, ignoreCase = true) }
-    }
+    @Composable
+    fun ToolItem(tool: Tool) = ToolRow(
+        descriptor = tool.descriptor,
+        isFavorite = tool.descriptor.id in favorites,
+        onClick = { onToolClick(tool) },
+        onToggleFavorite = { scope.launch { settingsRepository.toggleFavorite(tool.descriptor.id) } }
+    )
 
-    val groupedTools = filteredTools.groupBy { it.descriptor.category }.toSortedMap()
-    
+    LazyColumn(modifier = modifier.fillMaxSize(), state = listState) {
+        item(key = "title") { ScreenTitle("DevToys") }
+        item(key = "search") {
+            SearchField(searchQuery, onSearchQueryChange, toolCount = allTools.size)
+        }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchQueryChange,
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            placeholder = { Text("Search tools...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-            singleLine = true
-        )
-        
-        LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
-            groupedTools.forEach { (category, tools) ->
-                val categoryName = category.name.replace("_", " & ")
-                val isExpanded = expandedCategories[categoryName] ?: true
-
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable { expandedCategories[categoryName] = !isExpanded },
-                        color = MaterialTheme.colorScheme.surfaceVariant
+        if (query.isNotEmpty()) {
+            val results = allTools.filter { it.matches(query) }
+            if (results.isEmpty()) {
+                item(key = "empty") {
+                    Text(
+                        "No tools match “$query”. Try a shorter word.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 24.dp)
+                    )
+                }
+            }
+            items(results, key = { it.descriptor.id }) { ToolItem(it) }
+        } else {
+            val recents = recentIds.mapNotNull { toolRegistry.getToolById(it) }
+            if (recents.isNotEmpty()) {
+                item(key = "recent-header") { SectionHeader("Recent") }
+                item(key = "recent-row") {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(categoryName, fontWeight = FontWeight.Bold)
-                            Icon(
-                                if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = null
-                            )
+                        items(recents, key = { it.descriptor.id }) { tool ->
+                            RecentTile(tool) { onToolClick(tool) }
                         }
                     }
                 }
-                
-                if (isExpanded) {
-                    items(tools, key = { it.descriptor.id }) { tool ->
-                        val isFavorite = favorites.contains(tool.descriptor.id)
-                        ListItem(
-                            headlineContent = { Text(getToolTitle(tool.descriptor.id)) },
-                            leadingContent = { Icon(tool.descriptor.icon, contentDescription = null) },
-                            trailingContent = {
-                                IconButton(onClick = { scope.launch { settingsRepository.toggleFavorite(tool.descriptor.id) } }) {
-                                    Icon(
-                                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = "Favorite",
-                                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
-                                    )
-                                }
-                            },
-                            modifier = Modifier.clickable { onToolClick(tool) }
-                        )
-                    }
+            }
+            allTools.groupBy { it.descriptor.category }.toSortedMap().forEach { (category, tools) ->
+                item(key = "header-${category.name}") {
+                    SectionHeader(category.label, count = tools.size)
+                }
+                items(tools, key = { it.descriptor.id }) { ToolItem(it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchField(query: String, onQueryChange: (String) -> Unit, toolCount: Int) {
+    val slab = LocalSlabColor.current
+    TextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        placeholder = { Text("Search $toolCount tools") },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        trailingIcon = if (query.isNotEmpty()) {
+            {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Clear, contentDescription = "Clear search")
                 }
             }
+        } else null,
+        singleLine = true,
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = slab,
+            unfocusedContainerColor = slab,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+        )
+    )
+}
+
+@Composable
+private fun RecentTile(tool: Tool, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(112.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.shapes.medium)
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
+            .padding(12.dp)
+    ) {
+        Icon(
+            tool.descriptor.icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp)
+        )
+        Text(
+            tool.descriptor.title,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 2,
+            minLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+}
+
+@Composable
+internal fun ScreenTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.displaySmall,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp)
+    )
+}
+
+@Composable
+internal fun SectionHeader(text: String, count: Int? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        if (count != null) {
+            Text(
+                count.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

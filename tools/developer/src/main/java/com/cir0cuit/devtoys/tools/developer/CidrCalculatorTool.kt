@@ -10,33 +10,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
+import java.math.BigInteger
 
 class CidrCalculatorTool : Tool {
     override val descriptor = ToolDescriptor(
-        "cidr",
-        android.R.string.untitled,
-        android.R.string.untitled,
-        Icons.Default.Router,
-        ToolCategory.NETWORK_SYSTEM,
-        listOf("cidr", "ip", "subnet", "network")
+        id = "cidr",
+        title = "CIDR Calculator",
+        description = "Work out the address range of a subnet",
+        icon = Icons.Default.Router,
+        category = ToolCategory.NETWORK_SYSTEM,
+        keywords = listOf("cidr", "ip", "subnet", "network")
     )
 
     @Composable
     override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf("192.168.1.0/24") }
-        
-        val output = remember(input) {
+
+        val rows = remember(input) {
             try {
                 val trimmed = input.trim()
                 if (!trimmed.contains("/")) throw Exception()
                 val parts = trimmed.split("/").map { it.trim() }
                 if (parts.size != 2) throw Exception()
                 val ipStr = parts[0]
-                
-                val isIpv4 = ipStr.contains(".") && !ipStr.contains(":")
-                val isIpv6 = ipStr.contains(":")
-                
-                if (isIpv4) {
+
+                if (ipStr.contains(".") && !ipStr.contains(":")) {
                     val octets = ipStr.split(".")
                     if (octets.size != 4) throw Exception()
                     if (octets.any { it.toIntOrNull() == null || it.toInt() !in 0..255 }) throw Exception()
@@ -58,58 +56,63 @@ class CidrCalculatorTool : Tool {
                     
                     fun toIp(v: Long) = "${(v shr 24) and 0xFF}.${(v shr 16) and 0xFF}.${(v shr 8) and 0xFF}.${v and 0xFF}"
                     
-                    """
-                        Network: ${toIp(network)}
-                        Netmask: ${toIp(mask)}
-                        Broadcast: ${toIp(broadcast)}
-                        First Host: ${toIp(minHost)}
-                        Last Host: ${toIp(maxHost)}
-                        Total Usable Hosts: $totalHosts
-                    """.trimIndent()
+                    listOf(
+                        "Network" to toIp(network),
+                        "Netmask" to toIp(mask),
+                        "Broadcast" to toIp(broadcast),
+                        "First host" to toIp(minHost),
+                        "Last host" to toIp(maxHost),
+                        "Usable hosts" to totalHosts.toString()
+                    )
                     
-                } else if (isIpv6) {
+                } else if (ipStr.contains(":")) {
                     val cidr = parts[1].toInt()
                     if (cidr < 0 || cidr > 128) throw Exception()
                     
                     val ipBytes = parseIpv6(ipStr) ?: throw Exception()
                     
-                    val allOnes = java.math.BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16)
-                    val ipBigInt = java.math.BigInteger(1, ipBytes)
+                    val allOnes = BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16)
+                    val ipBigInt = BigInteger(1, ipBytes)
                     val maskBigInt = allOnes.shiftLeft(128 - cidr).and(allOnes)
                     val networkBigInt = ipBigInt.and(maskBigInt)
                     val broadcastBigInt = networkBigInt.or(maskBigInt.xor(allOnes))
                     
-                    fun toIpv6(b: java.math.BigInteger): String {
-                        val hex = String.format("%032x", b)
-                        return formatIpv6(hex.chunked(4).map { it.toInt(16) })
-                    }
+                    fun toIpv6(b: BigInteger) = formatIpv6(b.toString(16).padStart(32, '0').chunked(4).map { it.toInt(16) })
                     
-                    val totalAddresses = if (cidr == 128) "1" else java.math.BigInteger.ONE.shiftLeft(128 - cidr).toString()
+                    val totalAddresses = if (cidr == 128) "1" else BigInteger.ONE.shiftLeft(128 - cidr).toString()
                     
-                    """
-                        Network: ${toIpv6(networkBigInt)}
-                        Netmask: ${toIpv6(maskBigInt)}
-                        Broadcast: ${toIpv6(broadcastBigInt)}
-                        Total Addresses: $totalAddresses
-                    """.trimIndent()
+                    listOf(
+                        "Network" to toIpv6(networkBigInt),
+                        "Netmask" to toIpv6(maskBigInt),
+                        "Broadcast" to toIpv6(broadcastBigInt),
+                        "Total addresses" to totalAddresses
+                    )
                 } else {
                     throw Exception()
                 }
             } catch (e: Exception) {
-                "Invalid CIDR format. Try 192.168.1.0/24 or 2001:db8::/32"
+                null
             }
         }
 
-        ToolScaffold("CIDR Calculator", modifier = modifier) {
+        ToolScaffold(descriptor.title, modifier = modifier) {
             MonoTextField(
                 value = input,
                 onValueChange = { input = it },
-                label = "IP/CIDR",
+                label = "Address and prefix",
                 minLines = 1,
                 maxLines = 1
             )
             Spacer(modifier = Modifier.height(16.dp))
-            OutputPanel(output)
+            if (rows != null) {
+                LabeledValueSlab(rows)
+            } else {
+                Text(
+                    "Not a valid CIDR range. Enter an address and prefix length, like 192.168.1.0/24 or 2001:db8::/32.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 

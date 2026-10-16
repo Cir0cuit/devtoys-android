@@ -2,7 +2,6 @@ package com.cir0cuit.devtoys.tools.data
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.IntegrationInstructions
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
@@ -26,9 +25,9 @@ import org.w3c.dom.Node
 import org.xml.sax.InputSource
 
 class XmlFormatterTool : Tool {
-    override val descriptor = ToolDescriptor("xml-formatter", android.R.string.untitled, android.R.string.untitled, Icons.Default.IntegrationInstructions, ToolCategory.FORMATTERS, listOf("xml", "format"))
+    override val descriptor = ToolDescriptor("xml-formatter", "XML Formatter", "Indent and validate XML", Icons.Default.IntegrationInstructions, ToolCategory.FORMATTERS, listOf("xml", "format"))
     @Composable override fun Content(modifier: Modifier) {
-        var input by rememberSaveable { mutableStateOf("") }
+        var input by rememberSaveable { mutableStateOf("<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>") }
         var output by remember { mutableStateOf("") }
         LaunchedEffect(input) {
             if (input.isEmpty()) {
@@ -38,10 +37,10 @@ class XmlFormatterTool : Tool {
             delay(300)
             output = withContext(Dispatchers.Default) { formatXml(input) }
         }
-        ToolScaffold("XML Formatter", modifier = modifier) {
-            MonoTextField(input, { input = it }, "XML Input")
-            Spacer(modifier = Modifier.height(16.dp))
-            OutputPanel(output)
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            PasteableInput(input, { input = it }, "XML input")
+            Spacer(modifier = Modifier.height(8.dp))
+            ResultPanel(output)
         }
     }
 }

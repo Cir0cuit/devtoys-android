@@ -1,4 +1,5 @@
 package com.cir0cuit.devtoys.tools.developer
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
@@ -11,43 +12,57 @@ import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 class JsonToTypesTool : Tool {
-    override val descriptor = ToolDescriptor("json-types", com.cir0cuit.devtoys.tools.base.R.string.tool_json_to_kotlin_title, com.cir0cuit.devtoys.tools.base.R.string.tool_json_to_kotlin_desc, Icons.Default.AccountTree, ToolCategory.CONVERTERS, listOf("json", "types", "kotlin", "typescript"))
-    
+    override val descriptor = ToolDescriptor(
+        id = "json-types",
+        title = "JSON to Kotlin Types",
+        description = "Generate Kotlin data classes from JSON",
+        icon = Icons.Default.AccountTree,
+        category = ToolCategory.CONVERTERS,
+        keywords = listOf("json", "types", "kotlin", "typescript")
+    )
+
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf("{\n  \"id\": 1,\n  \"name\": \"Test\",\n  \"isActive\": true,\n  \"data\": {\"value\": 5}\n}") }
-        
-        val output = remember(input) {
-            if (input.isEmpty()) "" else try {
-                val trimmed = input.trim()
-                if (maxDepth(trimmed) > MAX_DEPTH) {
-                    "Error: JSON nesting too deep (max $MAX_DEPTH)"
-                } else if (trimmed.startsWith("[")) {
-                    val arr = JSONArray(trimmed)
-                    val first = if (arr.length() > 0) arr.optJSONObject(0) else null
-                    if (first != null) {
-                        generateKotlinClass("RootItem", first, mutableSetOf("RootItem"))
-                    } else if (arr.length() == 0 || arr.isNull(0)) {
-                        "// Empty array or null first element"
-                    } else {
-                        "typealias Root = List<${elementType(arr)}>"
-                    }
-                } else {
-                    val json = JSONObject(trimmed)
-                    generateKotlinClass("Root", json, mutableSetOf("Root"))
-                }
-            } catch (e: StackOverflowError) {
-                "Error: JSON nesting too deep"
-            } catch (e: Exception) { "Error: ${e.message ?: "Invalid JSON"}" }
+        var output by remember { mutableStateOf("") }
+        LaunchedEffect(input) {
+            if (output.isNotEmpty()) delay(250)
+            output = withContext(Dispatchers.Default) { convert(input) }
         }
-        
-        ToolScaffold("JSON to Kotlin Types", modifier = modifier) {
-            MonoTextField(input, { input = it }, "JSON Input", minLines=6)
+
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            MonoTextField(input, { input = it }, "JSON", minLines = 6)
             Spacer(modifier = Modifier.height(16.dp))
-            OutputPanel(output)
+            OutputPanel(output, label = "Kotlin")
         }
     }
+
+    private fun convert(input: String): String =
+        if (input.isEmpty()) "" else try {
+            val trimmed = input.trim()
+            if (maxDepth(trimmed) > MAX_DEPTH) {
+                "JSON is nested too deeply. Keep it under $MAX_DEPTH levels."
+            } else if (trimmed.startsWith("[")) {
+                val arr = JSONArray(trimmed)
+                val first = if (arr.length() > 0) arr.optJSONObject(0) else null
+                if (first != null) {
+                    generateKotlinClass("RootItem", first, mutableSetOf("RootItem"))
+                } else if (arr.length() == 0 || arr.isNull(0)) {
+                    "// Empty array or null first element"
+                } else {
+                    "typealias Root = List<${elementType(arr)}>"
+                }
+            } else {
+                val json = JSONObject(trimmed)
+                generateKotlinClass("Root", json, mutableSetOf("Root"))
+            }
+        } catch (e: StackOverflowError) {
+            "JSON is nested too deeply to convert."
+        } catch (e: Exception) { "Not valid JSON: ${e.message ?: "check brackets, quotes and commas"}" }
 
     internal fun generateKotlinClass(className: String, json: JSONObject, usedClassNames: MutableSet<String>): String {
         val sb = StringBuilder()

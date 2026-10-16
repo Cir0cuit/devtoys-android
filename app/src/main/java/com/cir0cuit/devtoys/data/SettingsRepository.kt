@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -83,5 +84,21 @@ class SettingsRepository @Inject constructor(
             val newSet = if (current.contains(toolId)) current - toolId else current + toolId
             prefs[FAVORITES_KEY] = newSet
         }
+    }
+
+    /** Most recently opened tool ids, newest first. */
+    val recentTools: StateFlow<List<String>> = prefs.map { p -> p[RECENTS_KEY]?.split(',')?.filter { it.isNotEmpty() } ?: emptyList() }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    suspend fun addRecent(toolId: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[RECENTS_KEY]?.split(',')?.filter { it.isNotEmpty() } ?: emptyList()
+            prefs[RECENTS_KEY] = (listOf(toolId) + (current - toolId)).take(MAX_RECENTS).joinToString(",")
+        }
+    }
+
+    private companion object {
+        val RECENTS_KEY = stringPreferencesKey("recent_tools")
+        const val MAX_RECENTS = 6
     }
 }

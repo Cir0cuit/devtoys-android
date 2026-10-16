@@ -6,7 +6,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.material3.MaterialTheme
+import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import androidx.compose.ui.text.input.KeyboardType
 
 import androidx.compose.material.icons.Icons
@@ -30,7 +31,8 @@ fun MonoTextField(
         modifier = modifier.fillMaxWidth(),
         minLines = minLines,
         maxLines = maxLines,
-        textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace),
+        textStyle = CodeTextStyle,
+        shape = MaterialTheme.shapes.medium,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrect = false),
         trailingIcon = {
             if (value.isNotEmpty()) {

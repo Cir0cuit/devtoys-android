@@ -2,6 +2,7 @@ package com.cir0cuit.devtoys.tools.generators
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -10,11 +11,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -27,7 +30,6 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.WriterException
 import com.google.zxing.common.BitMatrix
 import java.io.File
-import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
 
 /** Encoder hints for [input]: ISO-8859-1 (the QR default) when it suffices, otherwise UTF-8. */
@@ -40,11 +42,11 @@ internal fun encodeQrMatrix(input: String, size: Int = 512): BitMatrix =
     MultiFormatWriter().encode(input, BarcodeFormat.QR_CODE, size, size, qrEncodeHints(input))
 
 class QrGeneratorTool : Tool {
-    override val descriptor = ToolDescriptor("qr-gen", android.R.string.untitled, android.R.string.untitled, Icons.Default.QrCode, ToolCategory.GENERATORS, listOf("qr", "barcode", "generator"))
+    override val descriptor = ToolDescriptor("qr-gen", "QR Code Generator", "Turn text or a link into a QR code", Icons.Default.QrCode, ToolCategory.GENERATORS, listOf("qr", "barcode", "generator"))
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf("https://devtoys.app") }
         val context = LocalContext.current
-        
+
         val qrResult: Pair<Bitmap?, String?> = remember(input) {
             if (input.isEmpty()) null to null else try {
                 val matrix = encodeQrMatrix(input)
@@ -61,14 +63,14 @@ class QrGeneratorTool : Tool {
                 bmp.setPixels(pixels, 0, width, 0, 0, width, height)
                 bmp to null
             } catch (e: WriterException) {
-                null to "Input too long for a QR code."
+                null to "The text is too long for a QR code. Shorten it and try again."
             } catch (e: Exception) {
                 null to (e.message ?: "Could not generate QR code.")
             }
         }
         val bitmap = qrResult.first
-        
-        val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri: android.net.Uri? ->
+
+        val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri: Uri? ->
             uri?.let {
                 try {
                     context.contentResolver.openOutputStream(it)?.use { out ->
@@ -86,40 +88,45 @@ class QrGeneratorTool : Tool {
                     val cachePath = File(context.cacheDir, "images")
                     cachePath.mkdirs()
                     val file = File(cachePath, "qr_code.png")
-                    val fileOutputStream = FileOutputStream(file)
-                    bmp.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream)
-                    fileOutputStream.close()
-
+                    file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
                     val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-
-                    val shareIntent = Intent().apply {
-                        action = Intent.ACTION_SEND
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         type = "image/png"
                         putExtra(Intent.EXTRA_STREAM, contentUri)
                     }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share QR Code"))
+                    context.startActivity(Intent.createChooser(shareIntent, "Share QR code"))
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
         }
 
-        ToolScaffold("QR Code Generator", modifier = modifier) {
-            MonoTextField(input, { input = it }, "Input")
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            MonoTextField(input, { input = it }, "Text or link", minLines = 2, maxLines = 6)
             Spacer(modifier = Modifier.height(16.dp))
             if (bitmap != null) {
-                Image(bitmap = bitmap.asImageBitmap(), contentDescription = "QR Code", modifier = Modifier.size(256.dp))
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "QR code",
+                    filterQuality = FilterQuality.None,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .widthIn(max = 280.dp)
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(MaterialTheme.shapes.medium)
+                )
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { saveLauncher.launch("qrcode.png") }) {
-                        Icon(Icons.Default.Save, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Save as PNG")
+                    FilledTonalButton(onClick = { saveLauncher.launch("qrcode.png") }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                        Text("Save PNG")
                     }
-                    Button(onClick = { shareBitmap() }) {
-                        Icon(Icons.Default.Share, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(onClick = { shareBitmap() }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
                         Text("Share")
                     }
                 }
@@ -128,7 +135,7 @@ class QrGeneratorTool : Tool {
                 if (error != null) {
                     Text(error, color = MaterialTheme.colorScheme.error)
                 } else {
-                    Text("Enter text to generate QR code.")
+                    Text("Enter text or a link to generate a QR code.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

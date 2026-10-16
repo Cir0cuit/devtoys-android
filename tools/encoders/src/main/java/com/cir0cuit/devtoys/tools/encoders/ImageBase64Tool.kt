@@ -8,36 +8,62 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Upload
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.cir0cuit.devtoys.core.ui.*
-import com.cir0cuit.devtoys.tools.base.*
+import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
+import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
+import com.cir0cuit.devtoys.core.ui.ToolScaffold
+import com.cir0cuit.devtoys.tools.base.Tool
+import com.cir0cuit.devtoys.tools.base.ToolCategory
+import com.cir0cuit.devtoys.tools.base.ToolDescriptor
 import java.io.File
-import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
@@ -78,6 +104,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 private const val PREVIEW_MAX_SIDE = 2048
+private const val PREVIEW_MAX_CHARS = 500
 
 private fun encodeBase64(bytes: ByteArray, mime: String, addPrefix: Boolean): String =
     (if (addPrefix) "data:$mime;base64," else "") + Base64.encodeToString(bytes, Base64.NO_WRAP)
@@ -99,8 +126,60 @@ private fun previewOf(src: Bitmap): Bitmap {
     return Bitmap.createScaledBitmap(src, (src.width * scale).toInt().coerceAtLeast(1), (src.height * scale).toInt().coerceAtLeast(1), true)
 }
 
+@Composable
+private fun IconTextButton(icon: ImageVector, text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    FilledTonalButton(onClick = onClick, modifier = modifier) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, maxLines = 1)
+    }
+}
+
+/** Recessed slab showing at most [PREVIEW_MAX_CHARS] of a Base64 string, with icon actions in its header. */
+@Composable
+private fun Base64Preview(label: String, base64: String, actions: @Composable () -> Unit) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = LocalSlabColor.current, shape = MaterialTheme.shapes.medium) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                actions()
+            }
+            val isShortened = base64.length > PREVIEW_MAX_CHARS
+            Text(
+                if (isShortened) base64.take(PREVIEW_MAX_CHARS) + "…" else base64,
+                style = CodeTextStyle,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = if (isShortened) 4.dp else 16.dp)
+            )
+            if (isShortened) {
+                Text(
+                    "Showing the first $PREVIEW_MAX_CHARS of ${"%,d".format(base64.length)} characters.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun formatBytes(n: Int): String = when {
+    n < 1024 -> "$n B"
+    n < 1024 * 1024 -> "%.1f KB".format(n / 1024.0)
+    else -> "%.1f MB".format(n / (1024.0 * 1024))
+}
+
 class ImageBase64Tool : Tool {
-    override val descriptor = ToolDescriptor("image-base64", android.R.string.untitled, android.R.string.untitled, Icons.Default.Image, ToolCategory.GRAPHICS, listOf("image", "base64", "encode", "decode", "picture"))
+    override val descriptor = ToolDescriptor(
+        id = "image-base64",
+        title = "Image ↔ Base64",
+        description = "Turn images into Base64 and back",
+        icon = Icons.Default.Image,
+        category = ToolCategory.GRAPHICS,
+        keywords = listOf("image", "base64", "encode", "decode", "picture")
+    )
 
     @Composable
     override fun Content(modifier: Modifier) {
@@ -109,6 +188,7 @@ class ImageBase64Tool : Tool {
 
         var addPrefix by rememberSaveable { mutableStateOf(true) }
         val context = LocalContext.current
+        val clipboard = LocalClipboardManager.current
 
         DisposableEffect(vm) {
             onDispose {
@@ -122,7 +202,7 @@ class ImageBase64Tool : Tool {
                 val resolver = context.applicationContext.contentResolver
                 vm.viewModelScope.launch(Dispatchers.IO) {
                     try {
-                        val bytes = resolver.openInputStream(it)?.use { s -> s.readBytes() } ?: error("Cannot open file")
+                        val bytes = resolver.openInputStream(it)?.use { s -> s.readBytes() } ?: error("the file could not be opened")
                         val bounds = decodeBounds(bytes)
                         val mime = resolver.getType(it)?.takeIf { t -> t.startsWith("image/") } ?: bounds.outMimeType ?: "image/png"
                         val preview = decodePreviewBitmap(bytes, bounds)
@@ -132,11 +212,11 @@ class ImageBase64Tool : Tool {
                             vm.encodeMime = mime
                             vm.encodeBitmap = preview
                             vm.encodeOutputBase64 = encoded
-                            vm.encodeErrorMessage = if (preview == null) "Failed to decode image; output contains the raw file bytes" else ""
+                            vm.encodeErrorMessage = if (preview == null) "This file could not be read as an image, so the output encodes its raw bytes." else ""
                         }
                     } catch (e: Throwable) {
                         withContext(Dispatchers.Main) {
-                            vm.encodeErrorMessage = "Error loading image: ${e.message}"
+                            vm.encodeErrorMessage = "Could not load the image: ${e.message}. Try another file."
                         }
                     }
                 }
@@ -169,11 +249,7 @@ class ImageBase64Tool : Tool {
             uri?.let {
                 scope.launch(Dispatchers.IO) {
                     try {
-                        context.contentResolver.openOutputStream(it)?.use { out ->
-                            out.bufferedWriter().use { writer ->
-                                writer.write(vm.encodeOutputBase64)
-                            }
-                        }
+                        context.contentResolver.openOutputStream(it)?.bufferedWriter()?.use { writer -> writer.write(vm.encodeOutputBase64) }
                     } catch (e: Throwable) {
                         e.printStackTrace()
                     }
@@ -185,14 +261,13 @@ class ImageBase64Tool : Tool {
             uri?.let {
                 scope.launch(Dispatchers.IO) {
                     try {
-                        val inputStream = context.contentResolver.openInputStream(it)
-                        val text = inputStream?.bufferedReader()?.use { reader -> reader.readText() } ?: ""
+                        val text = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }.orEmpty()
                         withContext(Dispatchers.Main) {
                             vm.decodeBase64String = text
                         }
                     } catch (e: Throwable) {
                         withContext(Dispatchers.Main) {
-                            vm.decodeErrorMessage = "Error loading text file: ${e.message}"
+                            vm.decodeErrorMessage = "Could not read the text file: ${e.message}"
                         }
                     }
                 }
@@ -203,23 +278,16 @@ class ImageBase64Tool : Tool {
             vm.decodeBitmap?.let { bmp ->
                 scope.launch(Dispatchers.IO) {
                     try {
-                        val cachePath = File(context.cacheDir, "images")
-                        cachePath.mkdirs()
-                        val file = File(cachePath, "shared_image.png")
-                        val fileOutputStream = FileOutputStream(file)
-                        bmp.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream)
-                        fileOutputStream.close()
-
+                        val file = File(File(context.cacheDir, "images").apply { mkdirs() }, "shared_image.png")
+                        file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
                         val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-
-                        val shareIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             type = "image/png"
                             putExtra(Intent.EXTRA_STREAM, contentUri)
                         }
                         withContext(Dispatchers.Main) {
-                            context.startActivity(Intent.createChooser(shareIntent, "Share Image"))
+                            context.startActivity(Intent.createChooser(shareIntent, "Share image"))
                         }
                     } catch (e: Throwable) {
                         e.printStackTrace()
@@ -231,174 +299,126 @@ class ImageBase64Tool : Tool {
         val decodeBase64String = vm.decodeBase64String
         LaunchedEffect(decodeBase64String) {
             if (vm.decodedBase64String == decodeBase64String) return@LaunchedEffect
-            if (decodeBase64String.isNotEmpty()) {
+            val result: Triple<Bitmap?, Bitmap?, String> = if (decodeBase64String.isEmpty()) {
+                Triple(null, null, "")
+            } else {
                 withContext(Dispatchers.IO) {
                     try {
-                        val cleanString = if (decodeBase64String.contains(",")) decodeBase64String.substringAfter(",") else decodeBase64String
-                        val decodedBytes = Base64.decode(cleanString, Base64.DEFAULT)
+                        // substringAfter keeps the whole string when there is no data URI prefix.
+                        val decodedBytes = Base64.decode(decodeBase64String.substringAfter(","), Base64.DEFAULT)
                         val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-                        val preview = bitmap?.let { previewOf(it) }
-                        withContext(Dispatchers.Main) {
-                            if (bitmap != null) {
-                                vm.decodeBitmap = bitmap
-                                vm.decodePreview = preview
-                                vm.decodeErrorMessage = ""
-                            } else {
-                                vm.decodeBitmap = null
-                                vm.decodePreview = null
-                                vm.decodeErrorMessage = "Invalid Base64 image string"
-                            }
-                        }
+                        if (bitmap != null) Triple(bitmap, previewOf(bitmap), "")
+                        else Triple(null, null, "This Base64 is not an image this device can read. Check that it is complete.")
                     } catch (e: Throwable) {
-                        withContext(Dispatchers.Main) {
-                            vm.decodeBitmap = null
-                            vm.decodePreview = null
-                            vm.decodeErrorMessage = "Invalid Base64 format or image too large"
+                        Triple(null, null, "Could not decode this Base64. Check that it is complete, or try a smaller image.")
+                    }
+                }
+            }
+            vm.decodeBitmap = result.first
+            vm.decodePreview = result.second
+            vm.decodeErrorMessage = result.third
+            vm.decodedBase64String = decodeBase64String
+        }
+
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            ModeSelector(listOf("To Base64", "To image"), if (isEncodeMode) 0 else 1, { isEncodeMode = it == 0 })
+            Spacer(Modifier.height(16.dp))
+
+            if (isEncodeMode) {
+                IconTextButton(Icons.Default.Upload, "Select image", { imagePicker.launch("image/*") }, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Add data URI prefix", style = MaterialTheme.typography.bodyLarge)
+                        Text("data:image/…;base64,", style = CodeTextStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = addPrefix, onCheckedChange = { addPrefix = it })
+                }
+                Spacer(Modifier.height(16.dp))
+                if (vm.encodeErrorMessage.isNotEmpty()) {
+                    ErrorText(vm.encodeErrorMessage)
+                    Spacer(Modifier.height(16.dp))
+                }
+                val encodeBytes = vm.encodeBytes
+                if (encodeBytes != null) {
+                    vm.encodeBitmap?.let {
+                        Image(bitmap = it.asImageBitmap(), contentDescription = "Selected image", modifier = Modifier.fillMaxWidth().height(200.dp))
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Text(
+                        "${vm.encodeMime} · ${formatBytes(encodeBytes.size)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    val encodeOutputBase64 = vm.encodeOutputBase64
+                    Base64Preview("Base64", encodeOutputBase64) {
+                        IconButton(onClick = { saveTextLauncher.launch("image_base64.txt") }) {
+                            Icon(Icons.Default.Save, contentDescription = "Save as .txt", modifier = Modifier.size(20.dp))
+                        }
+                        IconButton(onClick = {
+                            if (encodeOutputBase64.length > 500_000) {
+                                Toast.makeText(context, "Too large for the clipboard. Save it as a .txt file instead.", Toast.LENGTH_LONG).show()
+                            } else {
+                                try {
+                                    clipboard.setText(AnnotatedString(encodeOutputBase64))
+                                    Toast.makeText(context, "Copied the full Base64", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Could not copy to the clipboard. Save it as a .txt file instead.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy all", modifier = Modifier.size(20.dp))
                         }
                     }
                 }
             } else {
-                vm.decodeBitmap = null
-                vm.decodePreview = null
-                vm.decodeErrorMessage = ""
-            }
-            vm.decodedBase64String = decodeBase64String
-        }
-
-        ToolScaffold("Image ↔ Base64", modifier = modifier, scrollable = false) {
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                TabRow(selectedTabIndex = if (isEncodeMode) 0 else 1) {
-                    Tab(selected = isEncodeMode, onClick = { isEncodeMode = true }, text = { Text("Image to Base64") })
-                    Tab(selected = !isEncodeMode, onClick = { isEncodeMode = false }, text = { Text("Base64 to Image") })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    IconTextButton(Icons.Default.ContentPaste, "Paste", {
+                        try {
+                            val clipText = clipboard.getText()?.text
+                            if (!clipText.isNullOrEmpty()) {
+                                vm.decodeBase64String = clipText
+                            } else {
+                                vm.decodeErrorMessage = "The clipboard has no text. Copy the Base64 first."
+                            }
+                        } catch (e: Exception) {
+                            vm.decodeErrorMessage = "Could not read the clipboard. Try loading a .txt file instead."
+                        }
+                    }, Modifier.weight(1f))
+                    IconTextButton(Icons.Default.Upload, "Load .txt", { loadTextLauncher.launch("text/plain") }, Modifier.weight(1f))
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-                if (isEncodeMode) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Add Data URI prefix")
-                        Spacer(Modifier.width(8.dp))
-                        Switch(checked = addPrefix, onCheckedChange = { addPrefix = it })
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { imagePicker.launch("image/*") }) {
-                        Icon(Icons.Default.Upload, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Select Image")
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    if (vm.encodeErrorMessage.isNotEmpty()) {
-                        Text(vm.encodeErrorMessage, color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    if (vm.encodeBytes != null) {
-                        val encodeBitmap = vm.encodeBitmap
-                        if (encodeBitmap != null) {
-                            Image(bitmap = encodeBitmap.asImageBitmap(), contentDescription = "Preview", modifier = Modifier.fillMaxWidth().height(200.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
-                        val encodeOutputBase64 = vm.encodeOutputBase64
-                        
-                        val localClipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-                        Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Generated Base64 String:", fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                val previewText = if (encodeOutputBase64.length > 500) encodeOutputBase64.take(500) + "...\n(Truncated for preview)" else encodeOutputBase64
-                                Text(previewText, style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.align(Alignment.End)) {
-                                    Button(onClick = { saveTextLauncher.launch("image_base64.txt") }) {
-                                        Icon(Icons.Default.Save, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Save as .txt")
-                                    }
-                                    Button(onClick = { 
-                                        if (encodeOutputBase64.length > 500_000) {
-                                            android.widget.Toast.makeText(context, "String too large for clipboard. Please save as .txt instead.", android.widget.Toast.LENGTH_LONG).show()
-                                        } else {
-                                            try {
-                                                localClipboard.setText(androidx.compose.ui.text.AnnotatedString(encodeOutputBase64))
-                                                android.widget.Toast.makeText(context, "Copied full Base64 to clipboard", android.widget.Toast.LENGTH_SHORT).show()
-                                            } catch(e: Exception) {
-                                                android.widget.Toast.makeText(context, "Failed to copy to clipboard", android.widget.Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Copy Full Base64")
-                                    }
-                                }
-                            }
+                if (decodeBase64String.isNotEmpty()) {
+                    Base64Preview("Base64 input", decodeBase64String) {
+                        IconButton(onClick = { vm.decodeBase64String = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear input", modifier = Modifier.size(20.dp))
                         }
                     }
-                } else {
-                    val localClipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                    Spacer(Modifier.height(16.dp))
+                } else if (vm.decodeErrorMessage.isEmpty()) {
+                    Text(
+                        "Paste Base64 or a data URI, or load it from a .txt file.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (vm.decodeErrorMessage.isNotEmpty()) {
+                    ErrorText(vm.decodeErrorMessage)
+                    Spacer(Modifier.height(16.dp))
+                }
+                val decodeBitmap = vm.decodeBitmap
+                val decodePreview = vm.decodePreview
+                if (decodeBitmap != null && decodePreview != null) {
+                    Text("Preview · ${decodeBitmap.width} × ${decodeBitmap.height}", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Image(bitmap = decodePreview.asImageBitmap(), contentDescription = "Decoded image", modifier = Modifier.fillMaxWidth().height(200.dp))
+                    Spacer(Modifier.height(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(onClick = {
-                            try {
-                                val clipText = localClipboard.getText()?.text
-                                if (!clipText.isNullOrEmpty()) {
-                                    vm.decodeBase64String = clipText
-                                } else {
-                                    vm.decodeErrorMessage = "Clipboard is empty or does not contain text"
-                                }
-                            } catch (e: Exception) {
-                                vm.decodeErrorMessage = "Failed to access clipboard"
-                            }
-                        }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.ContentPaste, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Paste Base64")
-                        }
-                        
-                        Button(onClick = { loadTextLauncher.launch("text/plain") }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.Upload, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Load .txt")
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (decodeBase64String.isNotEmpty()) {
-                        Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Input Base64 String Preview:", fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                val previewText = if (decodeBase64String.length > 500) decodeBase64String.take(500) + "...\n(Truncated for preview)" else decodeBase64String
-                                Text(previewText, style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                TextButton(onClick = { vm.decodeBase64String = ""; vm.decodeBitmap = null; vm.decodePreview = null; vm.decodeErrorMessage = "" }, modifier = Modifier.align(Alignment.End)) {
-                                    Text("Clear")
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    if (vm.decodeErrorMessage.isNotEmpty()) {
-                        Text(vm.decodeErrorMessage, color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                    val decodePreview = vm.decodePreview
-                    if (vm.decodeBitmap != null && decodePreview != null) {
-                        Text("Preview:", fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Image(bitmap = decodePreview.asImageBitmap(), contentDescription = "Preview", modifier = Modifier.fillMaxWidth().height(200.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { saveLauncher.launch("decoded_image.png") }) {
-                                Icon(Icons.Default.Save, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Save as PNG")
-                            }
-                            Button(onClick = { shareBitmap() }) {
-                                Icon(Icons.Default.Share, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Share")
-                            }
-                        }
+                        IconTextButton(Icons.Default.Save, "Save PNG", { saveLauncher.launch("decoded_image.png") }, Modifier.weight(1f))
+                        IconTextButton(Icons.Default.Share, "Share", { shareBitmap() }, Modifier.weight(1f))
                     }
                 }
             }

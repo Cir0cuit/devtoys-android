@@ -1,31 +1,44 @@
 package com.cir0cuit.devtoys.tools.text
-import androidx.compose.foundation.layout.*
+
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Difference
-
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.*
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.cir0cuit.devtoys.core.ui.*
-import com.cir0cuit.devtoys.tools.base.*
-import com.github.difflib.DiffUtils
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
+import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
+import com.cir0cuit.devtoys.core.ui.NumberedTextField
+import com.cir0cuit.devtoys.core.ui.ToolScaffold
+import com.cir0cuit.devtoys.tools.base.Tool
+import com.cir0cuit.devtoys.tools.base.ToolCategory
+import com.cir0cuit.devtoys.tools.base.ToolDescriptor
+import com.github.difflib.DiffUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -58,56 +71,52 @@ internal val boundedTextSaver = Saver<MutableState<String>, Any>(
 )
 
 class TextDiffTool : Tool {
-    override val descriptor = ToolDescriptor("text-diff", android.R.string.untitled, android.R.string.untitled, Icons.Default.Difference, ToolCategory.TEXT, listOf("diff", "compare"))
+    override val descriptor = ToolDescriptor(
+        "text-diff", "Text Comparer", "Compare two texts line by line",
+        Icons.Default.Difference, ToolCategory.TEXT, listOf("diff", "compare")
+    )
 
     @Composable override fun Content(modifier: Modifier) {
-        val clipboardManager = LocalClipboardManager.current
         var tabIndex by rememberSaveable { mutableStateOf(0) }
         var oldText by rememberSaveable(saver = boundedTextSaver) { mutableStateOf("") }
         var newText by rememberSaveable(saver = boundedTextSaver) { mutableStateOf("") }
 
-        var output by remember { mutableStateOf(AnnotatedString("Computing…")) }
+        var output by remember { mutableStateOf(AnnotatedString("")) }
         var diffInputs by remember { mutableStateOf<Pair<String, String>?>(null) }
-        val diffReady = diffInputs?.let { it.first == oldText && it.second == newText } == true
+        val diffReady = diffInputs == (oldText to newText)
         LaunchedEffect(oldText, newText, tabIndex) {
             if (tabIndex != 2 || diffReady) return@LaunchedEffect
-            output = AnnotatedString("Computing…")
             output = withContext(Dispatchers.Default) { buildDiff(oldText, newText) }
             diffInputs = oldText to newText
         }
 
-        ToolScaffold("Text Comparer", modifier = modifier, scrollable = false) {
+        ToolScaffold(descriptor.title, modifier = modifier, scrollable = false) {
             TabRow(selectedTabIndex = tabIndex) {
-                Tab(selected = tabIndex == 0, onClick = { tabIndex = 0 }, text = { Text("Old Text") })
-                Tab(selected = tabIndex == 1, onClick = { tabIndex = 1 }, text = { Text("New Text") })
+                Tab(selected = tabIndex == 0, onClick = { tabIndex = 0 }, text = { Text("Old text") })
+                Tab(selected = tabIndex == 1, onClick = { tabIndex = 1 }, text = { Text("New text") })
                 Tab(selected = tabIndex == 2, onClick = { tabIndex = 2 }, text = { Text("Differences") })
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (tabIndex == 0) {
-                    NumberedTextField(oldText, { oldText = it }, modifier = Modifier.fillMaxSize())
-                } else if (tabIndex == 1) {
-                    NumberedTextField(newText, { newText = it }, modifier = Modifier.fillMaxSize())
-                } else {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Surface(
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Box(modifier = Modifier.padding(16.dp).horizontalScroll(rememberScrollState()).verticalScroll(rememberScrollState())) {
-                                Text(if (diffReady) output else AnnotatedString("Computing…"), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
-                            }
-                        }
-                        FloatingActionButton(
-                            onClick = { if (diffReady) clipboardManager.setText(output) },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
-                        ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
+            Spacer(modifier = Modifier.height(8.dp))
+            val paneModifier = Modifier.weight(1f).fillMaxWidth()
+            when (tabIndex) {
+                0 -> {
+                    PaneHeader("Old text", onPaste = { oldText = it })
+                    NumberedTextField(oldText, { oldText = it }, modifier = paneModifier)
+                }
+                1 -> {
+                    PaneHeader("New text", onPaste = { newText = it })
+                    NumberedTextField(newText, { newText = it }, modifier = paneModifier)
+                }
+                else -> {
+                    PaneHeader("Differences", copyText = if (diffReady) output.text else null)
+                    Surface(modifier = paneModifier, color = LocalSlabColor.current, shape = MaterialTheme.shapes.medium) {
+                        Box(modifier = Modifier.padding(16.dp).horizontalScroll(rememberScrollState()).verticalScroll(rememberScrollState())) {
+                            Text(if (diffReady) output else AnnotatedString("Computing…"), style = CodeTextStyle)
                         }
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -159,7 +168,7 @@ internal fun buildDiff(oldText: String, newText: String): AnnotatedString = buil
                 if (printed < oldLines.size) gap()
             }
         } catch (e: Exception) {
-            append("Error: ${e.message}")
+            append("Could not compare the texts: ${e.message}")
         }
     }
 }
