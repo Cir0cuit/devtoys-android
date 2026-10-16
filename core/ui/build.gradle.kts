@@ -46,6 +46,7 @@ dependencies {
 
     api(project(":core:designsystem"))
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.activity:activity-compose:1.8.2")
     implementation("com.google.dagger:hilt-android:2.51.1")
     ksp("com.google.dagger:hilt-compiler:2.51.1")
 
