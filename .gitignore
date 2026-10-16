@@ -69,3 +69,6 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+
+# Local knowledge graph (graphify)
+graphify-out/
