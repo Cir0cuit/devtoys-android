@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import com.cir0cuit.devtoys.data.SettingsRepository
 import com.cir0cuit.devtoys.tools.base.ToolRegistry
@@ -22,6 +23,14 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var toolRegistry: ToolRegistry
     @Inject lateinit var settingsRepository: SettingsRepository
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && settingsRepository.hideStatusBar.value) {
+            androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                .hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
@@ -41,8 +50,10 @@ class MainActivity : ComponentActivity() {
             androidx.compose.runtime.LaunchedEffect(hideStatusBar) {
                 val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
                 if (hideStatusBar) {
+                    windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
                 } else {
+                    windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
                     windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
                 }
             }
@@ -123,6 +134,16 @@ class MainActivity : ComponentActivity() {
                     onBackground = if (isDarkTheme) Color.White else Color.Black
                 )
             } else colorScheme
+
+            val barColor = finalColorScheme.background.toArgb()
+            androidx.compose.runtime.LaunchedEffect(isDarkTheme, barColor) {
+                window.statusBarColor = barColor
+                window.navigationBarColor = barColor
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !isDarkTheme
+                    isAppearanceLightNavigationBars = !isDarkTheme
+                }
+            }
 
             MaterialTheme(colorScheme = finalColorScheme) {
                 MainScreen(toolRegistry = toolRegistry, settingsRepository = settingsRepository)

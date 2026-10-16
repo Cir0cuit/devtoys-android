@@ -8,24 +8,27 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import com.cir0cuit.devtoys.data.SettingsRepository
 import com.cir0cuit.devtoys.tools.base.ToolRegistry
 
 @Composable
 fun MainScreen(toolRegistry: ToolRegistry, settingsRepository: SettingsRepository) {
-    var selectedTab by remember { mutableStateOf(0) }
-    var activeTool by remember { mutableStateOf<com.cir0cuit.devtoys.tools.base.Tool?>(null) }
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var activeToolId by rememberSaveable { mutableStateOf<String?>(null) }
+    val activeTool = activeToolId?.let { toolRegistry.getToolById(it) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val expandedCategories = remember { mutableStateMapOf<String, Boolean>() }
     val saveableStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     
     Surface(color = MaterialTheme.colorScheme.background) {
         if (activeTool != null) {
-            saveableStateHolder.SaveableStateProvider(activeTool!!.descriptor.id) {
-                activeTool!!.Content(modifier = Modifier)
+            saveableStateHolder.SaveableStateProvider(activeTool.descriptor.id) {
+                activeTool.Content(modifier = Modifier)
             }
-            androidx.activity.compose.BackHandler { activeTool = null }
+            androidx.activity.compose.BackHandler { activeToolId = null }
         } else {
             Scaffold(
                 bottomBar = {
@@ -59,13 +62,15 @@ fun MainScreen(toolRegistry: ToolRegistry, settingsRepository: SettingsRepositor
                         modifier = modifier,
                         listState = listState,
                         expandedCategories = expandedCategories,
-                        onToolClick = { tool -> activeTool = tool }
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                        onToolClick = { tool -> activeToolId = tool.descriptor.id }
                     )
                     1 -> FavoritesScreen(
                         toolRegistry = toolRegistry,
                         settingsRepository = settingsRepository,
                         modifier = modifier,
-                        onToolClick = { tool -> activeTool = tool }
+                        onToolClick = { tool -> activeToolId = tool.descriptor.id }
                     )
                     2 -> SettingsScreen(
                         settingsRepository = settingsRepository,

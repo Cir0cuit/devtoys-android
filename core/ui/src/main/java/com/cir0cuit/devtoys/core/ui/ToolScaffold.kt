@@ -2,6 +2,8 @@ package com.cir0cuit.devtoys.core.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -20,7 +22,7 @@ import androidx.compose.ui.unit.dp
 
 import androidx.compose.foundation.layout.imePadding
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ToolScaffold(
     title: String,
@@ -46,6 +48,7 @@ fun ToolScaffold(
     ) { padding ->
         val colModifier = Modifier
             .padding(padding)
+            .consumeWindowInsets(padding)
             .padding(horizontal = 16.dp)
             .fillMaxSize()
             .imePadding()

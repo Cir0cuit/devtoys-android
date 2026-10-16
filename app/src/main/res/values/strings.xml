@@ -1,13 +1,3 @@
 <resources>
     <string name="app_name">DevToys</string>
-    <string name="tool_json_to_kotlin_title">JSON to Kotlin Types</string>
-    <string name="tool_json_to_kotlin_desc">Generate Kotlin Data Classes from JSON</string>
-    <string name="tool_mac_address_title">MAC Address Formatter</string>
-    <string name="tool_mac_address_desc">Format MAC addresses and lookup vendor</string>
-    <string name="tool_markdown_title">Markdown Previewer</string>
-    <string name="tool_markdown_desc">Preview Markdown and cheatsheet</string>
-    <string name="tool_color_picker_title">Color Picker</string>
-    <string name="tool_color_picker_desc">Pick and convert colors</string>
-    <string name="tool_csv_viewer_title">CSV Viewer</string>
-    <string name="tool_csv_viewer_desc">View CSV and copy as Markdown</string>
 </resources>

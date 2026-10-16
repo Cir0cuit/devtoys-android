@@ -73,9 +73,10 @@ fun ToolsListScreen(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     expandedCategories: MutableMap<String, Boolean>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     onToolClick: (com.cir0cuit.devtoys.tools.base.Tool) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
     val allTools = toolRegistry.getAllTools()
     val favorites by settingsRepository.favoriteTools.collectAsState(initial = emptySet())
     val scope = rememberCoroutineScope()
@@ -91,7 +92,7 @@ fun ToolsListScreen(
     Column(modifier = modifier.fillMaxSize()) {
         OutlinedTextField(
             value = searchQuery,
-            onValueChange = { searchQuery = it },
+            onValueChange = onSearchQueryChange,
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             placeholder = { Text("Search tools...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },

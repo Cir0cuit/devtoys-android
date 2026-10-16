@@ -60,7 +60,7 @@ fun NumberedTextField(
             )
         )
 
-        Row(modifier = Modifier.padding(8.dp).fillMaxWidth().defaultMinSize(minHeight = 100.dp)) {
+        Row(modifier = Modifier.padding(8.dp).fillMaxWidth().defaultMinSize(minHeight = 100.dp).height(IntrinsicSize.Min)) {
             val linesCount = value.count { it == '\n' } + 1
             val lineNumbers = (1..linesCount).joinToString("\n")
             

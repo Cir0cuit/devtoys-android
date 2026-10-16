@@ -1,8 +1,6 @@
 package com.cir0cuit.devtoys.core.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -29,13 +27,11 @@ fun MonoTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        modifier = modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+        modifier = modifier.fillMaxWidth(),
         minLines = minLines,
         maxLines = maxLines,
         textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrect = false),
         trailingIcon = {
             if (value.isNotEmpty()) {
                 IconButton(onClick = { onValueChange("") }) {
