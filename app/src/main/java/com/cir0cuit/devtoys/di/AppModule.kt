@@ -4,6 +4,28 @@ import com.cir0cuit.devtoys.tools.base.DefaultToolRegistry
 import com.cir0cuit.devtoys.tools.base.ToolRegistry
 import com.cir0cuit.devtoys.tools.encoders.Base64Tool
 import com.cir0cuit.devtoys.tools.generators.UUIDTool
+import com.cir0cuit.devtoys.tools.crypto.KeyPairGeneratorTool
+import com.cir0cuit.devtoys.tools.crypto.OtpTool
+import com.cir0cuit.devtoys.tools.crypto.TextEncryptionTool
+import com.cir0cuit.devtoys.tools.data.JsonDiffTool
+import com.cir0cuit.devtoys.tools.data.XmlJsonTool
+import com.cir0cuit.devtoys.tools.developer.ContrastCheckerTool
+import com.cir0cuit.devtoys.tools.developer.IpConverterTool
+import com.cir0cuit.devtoys.tools.developer.SemverTool
+import com.cir0cuit.devtoys.tools.encoders.BaseNTool
+import com.cir0cuit.devtoys.tools.encoders.GzipTool
+import com.cir0cuit.devtoys.tools.generators.IdGeneratorTool
+import com.cir0cuit.devtoys.tools.reference.BasicAuthTool
+import com.cir0cuit.devtoys.tools.reference.DeviceInfoTool
+import com.cir0cuit.devtoys.tools.reference.MathEvaluatorTool
+import com.cir0cuit.devtoys.tools.reference.MimeTypeTool
+import com.cir0cuit.devtoys.tools.reference.PortReferenceTool
+import com.cir0cuit.devtoys.tools.reference.UnitConverterTool
+import com.cir0cuit.devtoys.tools.text.FindReplaceTool
+import com.cir0cuit.devtoys.tools.text.ListCompareTool
+import com.cir0cuit.devtoys.tools.text.StringEscapeTool
+import com.cir0cuit.devtoys.tools.text.TextStatsTool
+import com.cir0cuit.devtoys.tools.text.UnicodeInspectorTool
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -82,6 +104,28 @@ object AppModule {
                 CidrCalculatorTool(),
                 MacAddressTool(),
                 X509DecoderTool(),
+                KeyPairGeneratorTool(),
+                OtpTool(),
+                TextEncryptionTool(),
+                JsonDiffTool(),
+                XmlJsonTool(),
+                ContrastCheckerTool(),
+                IpConverterTool(),
+                SemverTool(),
+                BaseNTool(),
+                GzipTool(),
+                IdGeneratorTool(),
+                BasicAuthTool(),
+                DeviceInfoTool(),
+                MathEvaluatorTool(),
+                MimeTypeTool(),
+                PortReferenceTool(),
+                UnitConverterTool(),
+                FindReplaceTool(),
+                ListCompareTool(),
+                StringEscapeTool(),
+                TextStatsTool(),
+                UnicodeInspectorTool(),
                 com.cir0cuit.devtoys.tools.developer.ColorPaletteTool(),
                 com.cir0cuit.devtoys.tools.encoders.ImageBase64Tool()
             )
