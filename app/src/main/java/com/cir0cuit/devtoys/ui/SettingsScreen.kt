@@ -19,16 +19,12 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Gavel
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import com.cir0cuit.devtoys.data.SettingsRepository
 import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
@@ -55,7 +51,7 @@ fun SettingsScreen(
     var showLicenses by remember { mutableStateOf(false) }
     var displayedLegalText by remember { mutableStateOf<Pair<String, String>?>(null) }
     
-    if (displayedLegalText != null) {
+    displayedLegalText?.let { (legalTitle, legalBody) ->
         Dialog(
             onDismissRequest = { displayedLegalText = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -63,7 +59,7 @@ fun SettingsScreen(
             Surface(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     TopAppBar(
-                        title = { Text(displayedLegalText!!.first) },
+                        title = { Text(legalTitle) },
                         navigationIcon = {
                             IconButton(onClick = { displayedLegalText = null }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -76,53 +72,11 @@ fun SettingsScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(16.dp)
                     ) {
-                        if (displayedLegalText!!.first == "Support & Feedback") {
+                        SelectionContainer {
                             Text(
-                                "Bug Reporting & Feature Requests\n\nReporting bugs and requesting features or changes is possible via email:",
+                                text = legalBody,
                                 style = MaterialTheme.typography.bodyLarge
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            val clipboardManager = LocalClipboardManager.current
-                            val context = LocalContext.current
-                            val email = "cir0cuit.dev@gmail.com"
-                            
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                SelectionContainer {
-                                    Text(
-                                        text = email,
-                                        style = MaterialTheme.typography.bodyLarge.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                IconButton(onClick = {
-                                    clipboardManager.setText(AnnotatedString(email))
-                                    Toast.makeText(context, "Email copied to clipboard", Toast.LENGTH_SHORT).show()
-                                }) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Email")
-                                }
-                            }
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                "Please note that while all feedback is appreciated, I do not promise to respond to every email or implement every requested feature.",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        } else {
-                            SelectionContainer {
-                                Text(
-                                    text = displayedLegalText!!.second,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                            }
                         }
                     }
                 }
@@ -287,9 +241,14 @@ fun SettingsScreen(
         Text("About", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
         Spacer(modifier = Modifier.height(8.dp))
         
+        val context = LocalContext.current
         Row(
-            modifier = Modifier.fillMaxWidth().clickable { 
-                displayedLegalText = Pair("Support & Feedback", LegalTexts.CONTACT_AND_SUPPORT) 
+            modifier = Modifier.fillMaxWidth().clickable {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LegalTexts.ISSUES_URL)))
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(context, LegalTexts.ISSUES_URL, Toast.LENGTH_LONG).show()
+                }
             }.padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -309,24 +268,13 @@ fun SettingsScreen(
         
         Row(
             modifier = Modifier.fillMaxWidth().clickable { 
-                displayedLegalText = Pair("License (BSL)", LegalTexts.BSL) 
+                displayedLegalText = Pair("License (Apache 2.0)", LegalTexts.LICENSE) 
             }.padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Gavel, contentDescription = "License (BSL)")
+            Icon(Icons.Default.Gavel, contentDescription = "License (Apache 2.0)")
             Spacer(modifier = Modifier.width(16.dp))
-            Text("License (BSL)", style = MaterialTheme.typography.bodyLarge)
-        }
-        
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable { 
-                displayedLegalText = Pair("EULA", LegalTexts.EULA) 
-            }.padding(vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Assignment, contentDescription = "EULA")
-            Spacer(modifier = Modifier.width(16.dp))
-            Text("EULA", style = MaterialTheme.typography.bodyLarge)
+            Text("License (Apache 2.0)", style = MaterialTheme.typography.bodyLarge)
         }
         
         Row(
