@@ -40,7 +40,7 @@ val CHEATSHEETS = listOf(
             CheatCommand("Commit", "git commit -m \"Message\"", "Record changes to the repository with a descriptive message."),
             CheatCommand("Status", "git status", "Show the working tree status (staged, unstaged, and untracked files)."),
             CheatCommand("Log", "git log --oneline", "Show the commit history in a compact, single-line format."),
-            CheatCommand("Diff", "git diff", "Show changes between working tree and the index (staged changes).")
+            CheatCommand("Diff", "git diff", "Show unstaged changes (working tree vs. index). Use 'git diff --staged' for staged changes.")
         )),
         CheatCategory("Branching & Merging", listOf(
             CheatCommand("Create Branch", "git checkout -b <name>", "Create a new branch and immediately switch to it."),
@@ -117,7 +117,7 @@ val CHEATSHEETS = listOf(
         )),
         CheatCategory("Docker Compose", listOf(
             CheatCommand("Start Services", "docker-compose up -d", "Create and start containers defined in docker-compose.yml in the background."),
-            CheatCommand("Stop Services", "docker-compose down", "Stop and remove containers, networks, images, and volumes."),
+            CheatCommand("Stop Services", "docker-compose down", "Stop and remove containers and networks. Add -v to also remove volumes, --rmi all to remove images."),
             CheatCommand("View Compose Logs", "docker-compose logs -f", "Follow log output from services defined in the compose file.")
         ))
     )),
@@ -253,7 +253,7 @@ class CheatsheetTool : Tool {
         val clipboardManager = LocalClipboardManager.current
         val context = LocalContext.current
         
-        val expandedState = remember { mutableStateMapOf<String, Boolean>() }
+        var collapsed by rememberSaveable { mutableStateOf(listOf<String>()) }
         
         ToolScaffold("Cheatsheets", modifier = modifier, scrollable = false) {
             LazyRow(modifier = Modifier.fillMaxWidth()) {
@@ -273,13 +273,13 @@ class CheatsheetTool : Tool {
             if (activeSheet != null) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     activeSheet.categories.forEach { category ->
-                        val isExpanded = expandedState[category.name] ?: true
+                        val isExpanded = category.name !in collapsed
                         item(key = category.name) {
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
-                                    .clickable { expandedState[category.name] = !isExpanded },
+                                    .clickable { collapsed = if (isExpanded) collapsed + category.name else collapsed - category.name },
                                 color = MaterialTheme.colorScheme.surfaceVariant,
                                 shape = MaterialTheme.shapes.medium
                             ) {

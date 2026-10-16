@@ -4,6 +4,7 @@ import android.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
@@ -35,9 +37,7 @@ class ColorPaletteTool : Tool {
         var blue by rememberSaveable { mutableStateOf(219f) }
         var hexInput by rememberSaveable { mutableStateOf("3498DB") }
 
-        LaunchedEffect(red, green, blue) {
-            hexInput = String.format("%02X%02X%02X", red.toInt(), green.toInt(), blue.toInt())
-        }
+        fun syncHex() { hexInput = String.format("%02X%02X%02X", red.toInt(), green.toInt(), blue.toInt()) }
 
         val baseColorInt = android.graphics.Color.rgb(red.toInt(), green.toInt(), blue.toInt())
 
@@ -46,15 +46,17 @@ class ColorPaletteTool : Tool {
                 MonoTextField(
                     value = hexInput,
                     onValueChange = { newValue ->
-                        hexInput = newValue.take(6).uppercase()
-                        try {
-                            if (hexInput.length == 6) {
-                                val parsedColor = android.graphics.Color.parseColor("#$hexInput")
-                                red = android.graphics.Color.red(parsedColor).toFloat()
-                                green = android.graphics.Color.green(parsedColor).toFloat()
-                                blue = android.graphics.Color.blue(parsedColor).toFloat()
-                            }
-                        } catch (e: Exception) {}
+                        var s = newValue.trim()
+                        if (s.startsWith("#")) s = s.substring(1)
+                        else if (s.startsWith("0x", ignoreCase = true)) s = s.substring(2)
+                        val clean = s.filter { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }.take(6).uppercase()
+                        hexInput = clean
+                        if (clean.length == 6) {
+                            val rgb = clean.toInt(16)
+                            red = ((rgb shr 16) and 0xFF).toFloat()
+                            green = ((rgb shr 8) and 0xFF).toFloat()
+                            blue = (rgb and 0xFF).toFloat()
+                        }
                     },
                     label = "HEX",
                     minLines = 1,
@@ -63,11 +65,11 @@ class ColorPaletteTool : Tool {
             }
             Spacer(modifier = Modifier.height(16.dp))
             
-            ColorChannelSlider("Red", red) { red = it }
+            ColorChannelSlider("Red", red) { red = it; syncHex() }
             Spacer(modifier = Modifier.height(8.dp))
-            ColorChannelSlider("Green", green) { green = it }
+            ColorChannelSlider("Green", green) { green = it; syncHex() }
             Spacer(modifier = Modifier.height(8.dp))
-            ColorChannelSlider("Blue", blue) { blue = it }
+            ColorChannelSlider("Blue", blue) { blue = it; syncHex() }
             
             Spacer(modifier = Modifier.height(16.dp))
             
@@ -152,14 +154,14 @@ class ColorPaletteTool : Tool {
             Text(label, modifier = Modifier.width(50.dp))
             OutlinedTextField(
                 value = textValue,
-                onValueChange = { 
-                    textValue = it
-                    it.toFloatOrNull()?.let { floatVal ->
-                        onValueChange(floatVal.coerceIn(0f, 255f))
-                    }
+                onValueChange = { input ->
+                    val digits = input.filter { it.isDigit() }.take(3)
+                    textValue = digits
+                    digits.toIntOrNull()?.let { v -> onValueChange(v.coerceIn(0, 255).toFloat()) }
                 },
                 modifier = Modifier.width(80.dp),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Slider(

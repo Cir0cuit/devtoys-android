@@ -13,19 +13,22 @@ import com.cir0cuit.devtoys.tools.base.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+/** Lowercase-hex HMAC of [input] (UTF-8) keyed with [secret] (UTF-8); "" when [secret] is empty, "Error: ..." on failure. */
+internal fun computeHmac(algo: String, secret: String, input: String): String =
+    if (secret.isEmpty()) "" else try {
+        val mac = Mac.getInstance(algo)
+        mac.init(SecretKeySpec(secret.toByteArray(), algo))
+        mac.doFinal(input.toByteArray()).joinToString("") { "%02x".format(it) }
+    } catch (e: Exception) { "Error: ${e.message}" }
+
 class HmacCalculatorTool : Tool {
     override val descriptor = ToolDescriptor("hmac", android.R.string.untitled, android.R.string.untitled, Icons.Default.EnhancedEncryption, ToolCategory.CRYPTOGRAPHY, listOf("hmac", "hash"))
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf("") }
-        var secret by rememberSaveable { mutableStateOf("") }
+        var secret by remember { mutableStateOf("") }
         var algo by rememberSaveable { mutableStateOf("HmacSHA256") }
         val output = remember(input, secret, algo) {
-            if (input.isEmpty() || secret.isEmpty()) "" else try {
-                val mac = Mac.getInstance(algo)
-                val keySpec = SecretKeySpec(secret.toByteArray(), algo)
-                mac.init(keySpec)
-                mac.doFinal(input.toByteArray()).joinToString("") { "%02x".format(it) }
-            } catch (e: Exception) { "Error: ${e.message}" }
+            computeHmac(algo, secret, input)
         }
         ToolScaffold("HMAC Calculator", modifier = modifier) {
             Row {

@@ -23,8 +23,22 @@ import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
 import com.cir0cuit.devtoys.tools.base.ToolDescriptor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
+import kotlin.coroutines.cancellation.CancellationException
+
+internal val HASH_ALGORITHMS = listOf("MD5", "SHA-1", "SHA-256", "SHA-512")
+
+internal fun newHashDigests(): List<MessageDigest> = HASH_ALGORITHMS.map { MessageDigest.getInstance(it) }
+
+internal fun ByteArray.toLowerHex(): String = joinToString("") { "%02x".format(it) }
+
+/** MD5, SHA-1, SHA-256, SHA-512 of [text] encoded as UTF-8, lowercase hex, in [HASH_ALGORITHMS] order. */
+internal fun hashText(text: String): List<String> {
+    val bytes = text.toByteArray()
+    return newHashDigests().map { it.digest(bytes).toLowerHex() }
+}
 
 class HashCalculatorTool : Tool {
     override val descriptor = ToolDescriptor(
@@ -74,56 +88,41 @@ class HashCalculatorTool : Tool {
 
         LaunchedEffect(textInput, fileUri, isFileMode) {
             isCalculating = true
-            withContext(Dispatchers.IO) {
+            val result: List<String> = withContext(Dispatchers.IO) {
                 try {
-                    if (!isFileMode && textInput.isEmpty()) {
-                        md5 = ""
-                        sha1 = ""
-                        sha256 = ""
-                        sha512 = ""
-                    } else if (isFileMode && fileUri == null) {
-                        md5 = ""
-                        sha1 = ""
-                        sha256 = ""
-                        sha512 = ""
+                    if ((!isFileMode && textInput.isEmpty()) || (isFileMode && fileUri == null)) {
+                        listOf("", "", "", "")
                     } else {
-                        val md5Digest = MessageDigest.getInstance("MD5")
-                        val sha1Digest = MessageDigest.getInstance("SHA-1")
-                        val sha256Digest = MessageDigest.getInstance("SHA-256")
-                        val sha512Digest = MessageDigest.getInstance("SHA-512")
-                        
+                        val digests = newHashDigests()
+
                         if (!isFileMode) {
                             val bytes = textInput.toByteArray()
-                            md5Digest.update(bytes)
-                            sha1Digest.update(bytes)
-                            sha256Digest.update(bytes)
-                            sha512Digest.update(bytes)
-                        } else if (fileUri != null) {
+                            digests.forEach { it.update(bytes) }
+                        } else {
                             val uri = Uri.parse(fileUri)
                             context.contentResolver.openInputStream(uri)?.use { stream ->
                                 val buffer = ByteArray(8192)
-                                var read: Int
-                                while (stream.read(buffer).also { read = it } != -1) {
-                                    md5Digest.update(buffer, 0, read)
-                                    sha1Digest.update(buffer, 0, read)
-                                    sha256Digest.update(buffer, 0, read)
-                                    sha512Digest.update(buffer, 0, read)
+                                while (true) {
+                                    ensureActive()
+                                    val read = stream.read(buffer)
+                                    if (read == -1) break
+                                    digests.forEach { it.update(buffer, 0, read) }
                                 }
                             }
                         }
-                        
-                        md5 = md5Digest.digest().joinToString("") { "%02x".format(it) }
-                        sha1 = sha1Digest.digest().joinToString("") { "%02x".format(it) }
-                        sha256 = sha256Digest.digest().joinToString("") { "%02x".format(it) }
-                        sha512 = sha512Digest.digest().joinToString("") { "%02x".format(it) }
+
+                        digests.map { it.digest().toLowerHex() }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    md5 = "Error: ${e.message}"
-                    sha1 = ""
-                    sha256 = ""
-                    sha512 = ""
+                    listOf("Error: ${e.message}", "", "", "")
                 }
             }
+            md5 = result[0]
+            sha1 = result[1]
+            sha256 = result[2]
+            sha512 = result[3]
             isCalculating = false
         }
 

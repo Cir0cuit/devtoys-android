@@ -47,7 +47,18 @@ class CronTool : Tool {
             if (includeSeconds) "$bSec $bMin $bHour $bDay $bMonth $bDayWeek" else "$bMin $bHour $bDay $bMonth $bDayWeek"
         }
 
-        val output = remember(activeCron, includeSeconds, outputFormat, nextExecutionsCount) {
+        var now by remember { mutableStateOf(java.time.ZonedDateTime.now()) }
+        LaunchedEffect(includeSeconds) {
+            while (true) {
+                val current = java.time.ZonedDateTime.now()
+                now = current.truncatedTo(if (includeSeconds) java.time.temporal.ChronoUnit.SECONDS else java.time.temporal.ChronoUnit.MINUTES)
+                val elapsedMs = current.nano / 1_000_000L + if (includeSeconds) 0L else current.second * 1000L
+                val periodMs = if (includeSeconds) 1000L else 60_000L
+                kotlinx.coroutines.delay((periodMs - elapsedMs).coerceAtLeast(1L))
+            }
+        }
+
+        val output = remember(activeCron, includeSeconds, outputFormat, nextExecutionsCount, now) {
             if (activeCron.isEmpty()) "" else try {
                 val definition = if (includeSeconds) {
                     CronDefinitionBuilder.instanceDefinitionFor(CronType.SPRING)
@@ -60,7 +71,7 @@ class CronTool : Tool {
                 val description = descriptor.describe(cron)
                 
                 val executionTime = com.cronutils.model.time.ExecutionTime.forCron(cron)
-                var next = executionTime.nextExecution(java.time.ZonedDateTime.now())
+                var next = executionTime.nextExecution(now)
                 val dates = mutableListOf<String>()
                 
                 for (i in 1..nextExecutionsCount) {
@@ -69,7 +80,8 @@ class CronTool : Tool {
                         next = executionTime.nextExecution(next.get())
                     }
                 }
-                "$description\n\nNext $nextExecutionsCount Executions:\n" + dates.joinToString("\n")
+                if (dates.isEmpty()) "$description\n\nNo upcoming executions"
+                else "$description\n\nNext ${dates.size} Executions:\n" + dates.joinToString("\n")
             } catch (e: Exception) { "Error: Invalid Cron Expression" }
         }
         

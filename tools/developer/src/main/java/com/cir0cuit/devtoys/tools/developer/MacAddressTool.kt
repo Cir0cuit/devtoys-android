@@ -11,7 +11,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -39,6 +41,7 @@ class MacAddressTool : Tool {
             if (isValid) {
                 val prefix = cleanMac.take(6).uppercase()
                 val hexPrefix = cleanMac.chunked(2).take(3).joinToString("-")
+                vendor = "Looking up..."
                 vendor = withContext(Dispatchers.IO) {
                     try {
                         var foundVendor = "Unknown Vendor"
@@ -46,6 +49,7 @@ class MacAddressTool : Tool {
                             BufferedReader(InputStreamReader(inputStream)).use { reader ->
                                 var line: String?
                                 while (reader.readLine().also { line = it } != null) {
+                                    ensureActive()
                                     val currentLine = line ?: continue
                                     if ((currentLine.startsWith(prefix) && currentLine.contains("(base 16)")) ||
                                         (currentLine.startsWith(hexPrefix) && currentLine.contains("(hex)"))) {
@@ -62,6 +66,7 @@ class MacAddressTool : Tool {
                         }
                         foundVendor
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         "Database missing or error"
                     }
                 }

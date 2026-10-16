@@ -19,56 +19,34 @@ class CsvViewerTool : Tool {
 1,Alice,30
 2,Bob,25""".trimIndent()) }
         val context = androidx.compose.ui.platform.LocalContext.current
-        var textToSave by remember { mutableStateOf("") }
+        fun save(uri: android.net.Uri?, content: () -> String) {
+            if (uri == null) return
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(content().toByteArray(Charsets.UTF_8))
+                } ?: throw java.io.IOException("Cannot open output stream")
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, "Save failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
         val saveMdLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/markdown")
         ) { uri: android.net.Uri? ->
-            if (uri != null) {
-                context.contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.write(textToSave.toByteArray())
-                }
-            }
+            save(uri) { toMarkdown(parseCsv(input)) }
         }
         val saveHtmlLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/html")
         ) { uri: android.net.Uri? ->
-            if (uri != null) {
-                context.contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.write(textToSave.toByteArray())
-                }
-            }
+            save(uri) { toHtmlDocument(toHtmlTable(parseCsv(input))) }
         }
         ToolScaffold("CSV Viewer & Converter", modifier = modifier, scrollable = false) {
-            MonoTextField(input, { input = it }, "CSV Input", minLines=4)
+            MonoTextField(input, { input = it }, "CSV Input", minLines = 4, maxLines = 8)
             Spacer(modifier = Modifier.height(16.dp))
-            val lines = input.lines().filter { it.isNotEmpty() }
-            if (lines.isNotEmpty()) {
+            val rows = remember(input) { parseCsv(input) }
+            if (rows.isNotEmpty()) {
                 val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
-                val mdString = buildString {
-                    lines.forEachIndexed { index, line ->
-                        val cols = line.split(",")
-                        append("| " + cols.joinToString(" | ") + " |\n")
-                        if (index == 0) {
-                            append("|" + cols.joinToString("|") { "---" } + "|\n")
-                        }
-                    }
-                }
-                val htmlString = buildString {
-                    append("<table>\n")
-                    lines.forEachIndexed { index, line ->
-                        val cols = line.split(",")
-                        if (index == 0) {
-                            append("  <tr>")
-                            cols.forEach { append("<th>$it</th>") }
-                            append("</tr>\n")
-                        } else {
-                            append("  <tr>")
-                            cols.forEach { append("<td>$it</td>") }
-                            append("</tr>\n")
-                        }
-                    }
-                    append("</table>")
-                }
+                val mdString = remember(rows) { toMarkdown(rows) }
+                val htmlString = remember(rows) { toHtmlTable(rows) }
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
@@ -77,7 +55,6 @@ class CsvViewerTool : Tool {
                             Text("Copy Markdown")
                         }
                         Button(onClick = {
-                            textToSave = mdString
                             saveMdLauncher.launch("table.md")
                         }, modifier = Modifier.weight(1f)) {
                             Text("Save Markdown")
@@ -91,7 +68,6 @@ class CsvViewerTool : Tool {
                             Text("Copy HTML")
                         }
                         Button(onClick = {
-                            textToSave = htmlString
                             saveHtmlLauncher.launch("table.html")
                         }, modifier = Modifier.weight(1f)) {
                             Text("Save HTML")
@@ -99,14 +75,10 @@ class CsvViewerTool : Tool {
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-            }
-            val parsedLines = input.lines().filter { it.isNotEmpty() }
-            if (lines.isNotEmpty()) {
-                LazyColumn {
-                    items(lines.size) { idx ->
-                        val cols = lines[idx].split(",")
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    items(rows.size) { idx ->
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            cols.forEach { col ->
+                            rows[idx].forEach { col ->
                                 Text(col, modifier = Modifier.weight(1f).padding(4.dp))
                             }
                         }
@@ -117,3 +89,70 @@ class CsvViewerTool : Tool {
         }
     }
 }
+
+internal fun parseCsv(text: String): List<List<String>> {
+    val rows = mutableListOf<List<String>>()
+    var row = mutableListOf<String>()
+    val field = StringBuilder()
+    var inQuotes = false
+    var fieldStarted = false
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (inQuotes) {
+            if (c == '"') {
+                if (i + 1 < text.length && text[i + 1] == '"') {
+                    field.append('"')
+                    i++
+                } else {
+                    inQuotes = false
+                }
+            } else {
+                field.append(c)
+            }
+        } else {
+            when (c) {
+                '"' -> if (fieldStarted) field.append(c) else { inQuotes = true; fieldStarted = true }
+                ',' -> { row.add(field.toString()); field.clear(); fieldStarted = false }
+                '\r' -> {}
+                '\n' -> { row.add(field.toString()); field.clear(); fieldStarted = false; rows.add(row); row = mutableListOf() }
+                else -> { field.append(c); fieldStarted = true }
+            }
+        }
+        i++
+    }
+    if (field.isNotEmpty() || row.isNotEmpty()) {
+        row.add(field.toString())
+        rows.add(row)
+    }
+    return rows.filterNot { it.size == 1 && it[0].isEmpty() }
+}
+
+private val LINE_BREAK = Regex("\r\n|\r|\n")
+
+internal fun mdEscape(s: String) = s.replace("\\", "\\\\").replace("|", "\\|").replace(LINE_BREAK, "<br>")
+
+internal fun htmlEscape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
+
+internal fun toMarkdown(rows: List<List<String>>): String = buildString {
+    rows.forEachIndexed { index, cols ->
+        append("| " + cols.joinToString(" | ") { mdEscape(it) } + " |\n")
+        if (index == 0) {
+            append("|" + cols.joinToString("|") { "---" } + "|\n")
+        }
+    }
+}
+
+internal fun toHtmlTable(rows: List<List<String>>): String = buildString {
+    append("<table>\n")
+    rows.forEachIndexed { index, cols ->
+        val tag = if (index == 0) "th" else "td"
+        append("  <tr>")
+        cols.forEach { append("<$tag>${htmlEscape(it)}</$tag>") }
+        append("</tr>\n")
+    }
+    append("</table>")
+}
+
+private fun toHtmlDocument(table: String): String =
+    "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>table</title></head><body>\n" + table + "\n</body></html>\n"

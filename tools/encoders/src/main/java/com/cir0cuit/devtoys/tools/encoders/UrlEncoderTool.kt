@@ -18,23 +18,26 @@ import com.cir0cuit.devtoys.tools.base.*
 import java.net.URLDecoder
 import java.net.URLEncoder
 
+internal fun urlEncode(input: String): String =
+    try {
+        if (input.isEmpty()) "" else URLEncoder.encode(input, "UTF-8")
+            .replace("+", "%20").replace("*", "%2A").replace("%7E", "~")
+    } catch (e: Exception) { "Error: ${e.message}" }
+
+internal fun urlDecode(input: String): String =
+    try {
+        if (input.isEmpty()) "" else URLDecoder.decode(input.replace(Regex("%(?![0-9A-Fa-f]{2})"), "%25"), "UTF-8")
+    } catch (e: Exception) { "Error: ${e.message}" }
+
 class UrlEncoderTool : Tool {
     override val descriptor = ToolDescriptor("url", android.R.string.untitled, android.R.string.untitled, Icons.Default.Link, ToolCategory.ENCODERS_DECODERS, listOf("url", "encode"))
     @Composable override fun Content(modifier: Modifier) {
-        var encodeInput by rememberSaveable { mutableStateOf("") }
-        var decodeInput by rememberSaveable { mutableStateOf("") }
+        var encodeInput by rememberSaveableText()
+        var decodeInput by rememberSaveableText()
         var isEncodeMode by rememberSaveable { mutableStateOf(true) }
-        
-        val encodeOutput = remember(encodeInput) {
-            try {
-                if (encodeInput.isEmpty()) "" else URLEncoder.encode(encodeInput, "UTF-8")
-            } catch (e: Exception) { "Error: ${e.message}" }
-        }
-        val decodeOutput = remember(decodeInput) {
-            try {
-                if (decodeInput.isEmpty()) "" else URLDecoder.decode(decodeInput, "UTF-8")
-            } catch (e: Exception) { "Error: ${e.message}" }
-        }
+
+        val encodeOutput = remember(encodeInput) { urlEncode(encodeInput) }
+        val decodeOutput = remember(decodeInput) { urlDecode(decodeInput) }
         
         ToolScaffold("URL Encoder / Decoder", modifier = modifier) {
             TabRow(selectedTabIndex = if (isEncodeMode) 0 else 1) {

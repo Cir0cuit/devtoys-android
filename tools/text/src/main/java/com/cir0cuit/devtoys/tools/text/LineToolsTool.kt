@@ -16,21 +16,9 @@ import com.cir0cuit.devtoys.tools.base.*
 class LineToolsTool : Tool {
     override val descriptor = ToolDescriptor("line-tools", android.R.string.untitled, android.R.string.untitled, Icons.Default.Sort, ToolCategory.TEXT, listOf("line", "sort", "dedupe"))
     @Composable override fun Content(modifier: Modifier) {
-        var input by rememberSaveable { mutableStateOf("") }
+        var input by rememberSaveable(saver = boundedTextSaver) { mutableStateOf("") }
         var operation by rememberSaveable { mutableStateOf("Sort") }
-        val output = remember(input, operation) {
-            if (input.isEmpty()) "" else {
-                val lines = input.lines()
-                when (operation) {
-                    "Sort" -> lines.sorted().joinToString("\n")
-                    "Sort Desc" -> lines.sortedDescending().joinToString("\n")
-                    "Dedupe" -> lines.distinct().joinToString("\n")
-                    "Reverse" -> lines.reversed().joinToString("\n")
-                    "Count" -> "Lines: ${lines.size}"
-                    else -> input
-                }
-            }
-        }
+        val output = remember(input, operation) { applyLineOperation(input, operation) }
         ToolScaffold("Line Tools", modifier = modifier) {
             LazyRow {
                 items(5) { idx ->
@@ -59,5 +47,25 @@ class LineToolsTool : Tool {
             Spacer(modifier = Modifier.height(8.dp))
             NumberedTextField(output, { }, modifier = Modifier.weight(1f).fillMaxWidth(), readOnly = true)
         }
+    }
+}
+
+internal fun applyLineOperation(input: String, operation: String): String {
+    if (input.isEmpty()) return ""
+    val trailing = when {
+        input.endsWith("\r\n") -> "\r\n"
+        input.endsWith("\n") -> "\n"
+        else -> ""
+    }
+    val sep = if (input.contains("\r\n")) "\r\n" else "\n"
+    val lines = input.removeSuffix(trailing).lines()
+    fun join(l: List<String>) = l.joinToString(sep) + trailing
+    return when (operation) {
+        "Sort" -> join(lines.sorted())
+        "Sort Desc" -> join(lines.sortedDescending())
+        "Dedupe" -> join(lines.distinct())
+        "Reverse" -> join(lines.reversed())
+        "Count" -> "Lines: ${lines.size}"
+        else -> input
     }
 }

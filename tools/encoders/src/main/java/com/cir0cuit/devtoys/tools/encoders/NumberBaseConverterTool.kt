@@ -10,6 +10,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
+import java.math.BigInteger
+
+internal fun parseBig(s: String, radix: Int): BigInteger? {
+    var t = s.trim().replace("_", "")
+    when (radix) {
+        16 -> t = t.removePrefix("0x").removePrefix("0X")
+        2 -> t = t.removePrefix("0b").removePrefix("0B")
+        8 -> t = t.removePrefix("0o").removePrefix("0O")
+    }
+    if (t.isEmpty() || t.length > 4096) return null
+    return runCatching { BigInteger(t, radix) }.getOrNull()
+}
 
 class NumberBaseConverterTool : Tool {
     override val descriptor = ToolDescriptor("base-converter", android.R.string.untitled, android.R.string.untitled, Icons.Default.Filter1, ToolCategory.CONVERTERS, listOf("base", "converter", "binary", "hex"))
@@ -22,28 +34,28 @@ class NumberBaseConverterTool : Tool {
         ToolScaffold("Number Base Converter", modifier = modifier) {
             MonoTextField(dec, { 
                 dec = it
-                val v = it.toLongOrNull(10)
+                val v = parseBig(it, 10)
                 if (v != null) { hex = v.toString(16).uppercase(); bin = v.toString(2); oct = v.toString(8) } 
                 else { hex = ""; bin = ""; oct = "" }
             }, "Decimal", minLines=1)
             Spacer(modifier = Modifier.height(8.dp))
             MonoTextField(hex, { 
                 hex = it
-                val v = it.toLongOrNull(16)
+                val v = parseBig(it, 16)
                 if (v != null) { dec = v.toString(10); bin = v.toString(2); oct = v.toString(8) } 
                 else { dec = ""; bin = ""; oct = "" }
             }, "Hexadecimal", minLines=1)
             Spacer(modifier = Modifier.height(8.dp))
             MonoTextField(bin, { 
                 bin = it
-                val v = it.toLongOrNull(2)
+                val v = parseBig(it, 2)
                 if (v != null) { dec = v.toString(10); hex = v.toString(16).uppercase(); oct = v.toString(8) } 
                 else { dec = ""; hex = ""; oct = "" }
             }, "Binary", minLines=1)
             Spacer(modifier = Modifier.height(8.dp))
             MonoTextField(oct, { 
                 oct = it
-                val v = it.toLongOrNull(8)
+                val v = parseBig(it, 8)
                 if (v != null) { dec = v.toString(10); hex = v.toString(16).uppercase(); bin = v.toString(2) } 
                 else { dec = ""; hex = ""; bin = "" }
             }, "Octal", minLines=1)

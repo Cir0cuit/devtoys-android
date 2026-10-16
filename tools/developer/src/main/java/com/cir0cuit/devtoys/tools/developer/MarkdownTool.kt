@@ -28,6 +28,11 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private const val MAX_OPEN_BYTES = 256 * 1024
 
 class MarkdownTool : Tool {
     override val descriptor = ToolDescriptor("markdown", com.cir0cuit.devtoys.tools.base.R.string.tool_markdown_title, com.cir0cuit.devtoys.tools.base.R.string.tool_markdown_desc, Icons.Default.EditNote, ToolCategory.TEXT, listOf("markdown", "preview", "cheatsheet"))
@@ -37,17 +42,24 @@ class MarkdownTool : Tool {
         var input by rememberSaveable { mutableStateOf("# Hello World\n\nThis is **Markdown**.") }
         
         val context = androidx.compose.ui.platform.LocalContext.current
-        var textToSave by remember { mutableStateOf("") }
-        var openedUri by remember { mutableStateOf<android.net.Uri?>(null) }
+        val scope = rememberCoroutineScope()
+        var openedUri by rememberSaveable { mutableStateOf<android.net.Uri?>(null) }
         var showSaveDialog by remember { mutableStateOf(false) }
 
         val openFileLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
         ) { uri: android.net.Uri? ->
             if (uri != null) {
-                openedUri = uri
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    input = stream.bufferedReader().readText()
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) { runCatching { readTextFile(context, uri) } }
+                    result.onSuccess { text ->
+                        input = text
+                        openedUri = uri
+                        val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+                    }.onFailure { e ->
+                        android.widget.Toast.makeText(context, "Could not open file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
@@ -56,18 +68,23 @@ class MarkdownTool : Tool {
             androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/markdown")
         ) { uri: android.net.Uri? ->
             if (uri != null) {
-                context.contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.write(textToSave.toByteArray())
-                }
-                android.widget.Toast.makeText(context, "Saved Markdown", android.widget.Toast.LENGTH_SHORT).show()
+                val ok = runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(input.toByteArray())
+                    } != null
+                }.getOrDefault(false)
+                android.widget.Toast.makeText(context, if (ok) "Saved Markdown" else "Error saving file", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
         val savePdfLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")
         ) { uri: android.net.Uri? ->
             if (uri != null) {
-                saveHeadlessPdf(context, textToSave, uri)
-                android.widget.Toast.makeText(context, "Exported PDF", android.widget.Toast.LENGTH_SHORT).show()
+                val text = input
+                scope.launch {
+                    val ok = withContext(Dispatchers.Default) { saveHeadlessPdf(context, text, uri) }
+                    android.widget.Toast.makeText(context, if (ok) "Exported PDF" else "PDF export failed", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -94,7 +111,6 @@ class MarkdownTool : Tool {
                 dismissButton = {
                     TextButton(onClick = {
                         showSaveDialog = false
-                        textToSave = input
                         saveMdLauncher.launch("document.md")
                     }) { Text("Save As") }
                 }
@@ -121,7 +137,7 @@ class MarkdownTool : Tool {
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
-                        openFileLauncher.launch(arrayOf("*/*"))
+                        openFileLauncher.launch(arrayOf("text/*", "text/markdown", "application/octet-stream"))
                     }, modifier = Modifier.weight(1f)) {
                         Text("Open")
                     }
@@ -129,14 +145,12 @@ class MarkdownTool : Tool {
                         if (openedUri != null) {
                             showSaveDialog = true
                         } else {
-                            textToSave = input
                             saveMdLauncher.launch("document.md")
                         }
                     }, modifier = Modifier.weight(1f)) {
                         Text("Save")
                     }
                     Button(onClick = {
-                        textToSave = input
                         savePdfLauncher.launch("document.pdf")
                     }, modifier = Modifier.weight(1f)) {
                         Text("Export PDF")
@@ -146,7 +160,33 @@ class MarkdownTool : Tool {
         }
     }
 
-    private fun saveHeadlessPdf(context: android.content.Context, markdownText: String, uri: android.net.Uri) {
+    private fun readTextFile(context: android.content.Context, uri: android.net.Uri): String {
+        val size = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else -1L
+        } ?: -1L
+        if (size > MAX_OPEN_BYTES) error("File too large (max ${MAX_OPEN_BYTES / 1024} KB)")
+        val stream = context.contentResolver.openInputStream(uri) ?: error("Cannot open file")
+        val bytes = stream.use { s ->
+            val out = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val n = s.read(buffer)
+                if (n < 0) break
+                out.write(buffer, 0, n)
+                if (out.size() > MAX_OPEN_BYTES) error("File too large (max ${MAX_OPEN_BYTES / 1024} KB)")
+            }
+            out.toByteArray()
+        }
+        return String(bytes, Charsets.UTF_8)
+    }
+
+    private fun saveHeadlessPdf(context: android.content.Context, markdownText: String, uri: android.net.Uri): Boolean = try {
+        writeHeadlessPdf(context, markdownText, uri)
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun writeHeadlessPdf(context: android.content.Context, markdownText: String, uri: android.net.Uri): Boolean {
         val config = android.content.res.Configuration(context.resources.configuration)
         config.densityDpi = android.util.DisplayMetrics.DENSITY_DEFAULT
         config.fontScale = 1.0f
@@ -180,20 +220,44 @@ class MarkdownTool : Tool {
         
         textView.layout(0, 0, a4WidthPoints, heightPx)
         
+        val a4HeightPoints = 842
+        val textLayout = textView.layout ?: return false
+        val layoutTop = textView.totalPaddingTop
+        val usableHeight = a4HeightPoints - 2 * paddingPx
+        val contentHeight = textLayout.height
+
         val pdfDocument = android.graphics.pdf.PdfDocument()
-        val pageHeightPoints = heightPx.coerceAtLeast(842)
-        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(a4WidthPoints, pageHeightPoints, 1).create()
-        val page = pdfDocument.startPage(pageInfo)
-        
-        page.canvas.drawColor(android.graphics.Color.WHITE)
-        textView.draw(page.canvas)
-        
-        pdfDocument.finishPage(page)
-        
-        context.contentResolver.openOutputStream(uri)?.use { stream ->
-            pdfDocument.writeTo(stream)
+        try {
+            var startY = 0
+            var pageNumber = 1
+            do {
+                var endY = startY + usableHeight
+                if (endY < contentHeight) {
+                    val lineTop = textLayout.getLineTop(textLayout.getLineForVertical(endY))
+                    if (lineTop > startY) endY = lineTop
+                } else {
+                    endY = contentHeight
+                }
+                val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(a4WidthPoints, a4HeightPoints, pageNumber).create()
+                val page = pdfDocument.startPage(pageInfo)
+                val canvas = page.canvas
+                canvas.drawColor(android.graphics.Color.WHITE)
+                canvas.save()
+                canvas.clipRect(0, paddingPx, a4WidthPoints, paddingPx + (endY - startY))
+                canvas.translate(0f, (paddingPx - layoutTop - startY).toFloat())
+                textView.draw(canvas)
+                canvas.restore()
+                pdfDocument.finishPage(page)
+                startY = endY
+                pageNumber++
+            } while (startY < contentHeight)
+
+            val stream = context.contentResolver.openOutputStream(uri) ?: return false
+            stream.use { pdfDocument.writeTo(it) }
+            return true
+        } finally {
+            pdfDocument.close()
         }
-        pdfDocument.close()
     }
 
     @Composable fun CodeMode(input: String, onInputChange: (String) -> Unit) {
@@ -230,20 +294,27 @@ class MarkdownTool : Tool {
         }
     }
 
-    private fun renderFakeFootnotes(markdown: String): String {
-        var processed = markdown
+    internal fun renderFakeFootnotes(markdown: String): String {
+        val stash = mutableListOf<String>()
+        fun mask(regex: Regex, text: String) = regex.replace(text) { stash.add(it.value); "\u0000${stash.size - 1}\u0000" }
+        fun esc(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+        var processed = mask(Regex("""(?ms)^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?(^ {0,3}\1[`~]*[ \t]*$|\z)"""), markdown.replace("\u0000", ""))
+        // CommonMark 4.4 indented code: 4-space/tab lines after a blank line or at document start.
+        // ponytail: also masks indented paragraphs inside list items; needs real block parsing to tell them apart.
+        processed = mask(Regex("""(?:\A|\n[ \t]*\n)(?: {4}|\t)[^\n]*(?:\n(?:[ \t]*\n)*(?: {4}|\t)[^\n]*)*"""), processed)
+        processed = mask(Regex("""(`+)(?!`).+?(?<!`)\1(?!`)""", RegexOption.DOT_MATCHES_ALL), processed)
         val defRegex = Regex("""(?m)^\[\^([^\]]+)\]:\s*(.+)""")
         processed = defRegex.replace(processed) { matchResult ->
-            val id = matchResult.groupValues[1]
+            val id = esc(matchResult.groupValues[1])
             val text = matchResult.groupValues[2]
             "<p><sup id=\"fn$id\">$id.</sup> $text <a href=\"#ref$id\">↩</a></p>"
         }
         val refRegex = Regex("""\[\^([^\]]+)\]""")
         processed = refRegex.replace(processed) { matchResult ->
-            val id = matchResult.groupValues[1]
+            val id = esc(matchResult.groupValues[1])
             "<sup><a href=\"#fn$id\" id=\"ref$id\">$id</a></sup>"
         }
-        return processed
+        return Regex("\u0000(\\d+)\u0000").replace(processed) { it.groupValues[1].toIntOrNull()?.let(stash::getOrNull) ?: it.value }
     }
 
     @Composable fun CheatsheetMode() {

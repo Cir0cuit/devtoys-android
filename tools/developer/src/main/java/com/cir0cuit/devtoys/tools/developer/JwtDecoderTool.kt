@@ -19,20 +19,19 @@ class JwtDecoderTool : Tool {
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf("") }
         val output = remember(input) {
-            if (input.isEmpty()) "" else try {
-                val parts = input.split(".")
-                if (parts.size >= 2) {
-                    val header = String(Base64.decode(parts[0], Base64.URL_SAFE))
-                    val payload = String(Base64.decode(parts[1], Base64.URL_SAFE))
-                    """
-                        Header:
-                        ${JSONObject(header).toString(2)}
-                        
-                        Payload:
-                        ${JSONObject(payload).toString(2)}
-                    """.trimIndent()
-                } else "Invalid JWT format"
-            } catch (e: Exception) { "Error: ${e.message}" }
+            val token = input.trim().replace(Regex("^Bearer\\s+", RegexOption.IGNORE_CASE), "").trim()
+            if (token.isEmpty()) "" else {
+                val parts = token.split(".")
+                fun section(label: String, part: String) = try {
+                    val json = String(Base64.decode(part, Base64.URL_SAFE or Base64.NO_WRAP), Charsets.UTF_8)
+                    "$label:\n" + JSONObject(json).toString(2).replace("\\/", "/")
+                } catch (e: Exception) { "$label: Error: ${e.message}" }
+                when {
+                    parts.size < 2 -> "Invalid JWT format"
+                    parts.size == 5 -> section("Header", parts[0]) + "\n\n(JWE: payload is encrypted)"
+                    else -> section("Header", parts[0]) + "\n\n" + section("Payload", parts[1])
+                }
+            }
         }
         ToolScaffold("JWT Decoder", modifier = modifier) {
             MonoTextField(input, { input = it }, "JWT Input")

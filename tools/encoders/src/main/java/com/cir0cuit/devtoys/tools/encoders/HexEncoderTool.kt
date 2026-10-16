@@ -12,23 +12,30 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 
+internal fun hexEncode(input: String): String =
+    try {
+        if (input.isEmpty()) "" else input.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it) }
+    } catch (e: Exception) { "Error: ${e.message}" }
+
+internal fun hexDecode(input: String): String {
+    val cleaned = input.replace(Regex("[\\s:-]"), "").removePrefix("0x").removePrefix("0X")
+    return when {
+        cleaned.isEmpty() -> ""
+        !cleaned.matches(Regex("[0-9a-fA-F]+")) -> "Error: input contains non-hex characters"
+        cleaned.length % 2 != 0 -> "Error: hex input must have an even number of digits"
+        else -> cleaned.chunked(2).map { it.toInt(16).toByte() }.toByteArray().toString(Charsets.UTF_8)
+    }
+}
+
 class HexEncoderTool : Tool {
     override val descriptor = ToolDescriptor("hex", android.R.string.untitled, android.R.string.untitled, Icons.Default.Numbers, ToolCategory.ENCODERS_DECODERS, listOf("hex", "encode"))
     @Composable override fun Content(modifier: Modifier) {
-        var encodeInput by rememberSaveable { mutableStateOf("") }
-        var decodeInput by rememberSaveable { mutableStateOf("") }
+        var encodeInput by rememberSaveableText()
+        var decodeInput by rememberSaveableText()
         var isEncodeMode by rememberSaveable { mutableStateOf(true) }
-        
-        val encodeOutput = remember(encodeInput) {
-            try {
-                if (encodeInput.isEmpty()) "" else encodeInput.toByteArray().joinToString("") { "%02x".format(it) }
-            } catch (e: Exception) { "Error: ${e.message}" }
-        }
-        val decodeOutput = remember(decodeInput) {
-            try {
-                if (decodeInput.isEmpty()) "" else decodeInput.chunked(2).map { it.toInt(16).toByte() }.toByteArray().let { String(it) }
-            } catch (e: Exception) { "Error: ${e.message}" }
-        }
+
+        val encodeOutput = remember(encodeInput) { hexEncode(encodeInput) }
+        val decodeOutput = remember(decodeInput) { hexDecode(decodeInput) }
         
         ToolScaffold("Hex Encoder / Decoder", modifier = modifier) {
             TabRow(selectedTabIndex = if (isEncodeMode) 0 else 1) {

@@ -9,8 +9,10 @@ import androidx.compose.material.icons.filled.TextFormat
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +26,17 @@ import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
 import com.cir0cuit.devtoys.tools.base.ToolDescriptor
 
+private const val MAX_SAVED_CHARS = 32_000
+
+private val CappedTextSaver: Saver<MutableState<String>, String> = Saver(
+    save = { state -> if (state.value.length <= MAX_SAVED_CHARS) state.value else "" },
+    restore = { mutableStateOf(it) }
+)
+
+@Composable
+internal fun rememberSaveableText(initial: String = ""): MutableState<String> =
+    rememberSaveable(saver = CappedTextSaver) { mutableStateOf(initial) }
+
 class Base64Tool : Tool {
     override val descriptor: ToolDescriptor = ToolDescriptor(
         id = "base64",
@@ -36,8 +49,8 @@ class Base64Tool : Tool {
 
     @Composable
     override fun Content(modifier: Modifier) {
-        var encodeInput by rememberSaveable { mutableStateOf("") }
-        var decodeInput by rememberSaveable { mutableStateOf("") }
+        var encodeInput by rememberSaveableText()
+        var decodeInput by rememberSaveableText()
         var isEncodeMode by rememberSaveable { mutableStateOf(true) }
 
         val encodeOutput = remember(encodeInput) {

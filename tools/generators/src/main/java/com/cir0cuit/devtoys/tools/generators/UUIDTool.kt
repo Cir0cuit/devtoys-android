@@ -15,7 +15,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,9 +38,9 @@ class UUIDTool : Tool {
 
     @Composable
     override fun Content(modifier: Modifier) {
-        var output by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
-        var count by rememberSaveable { mutableStateOf(1) }
+        var raw by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
         var isUppercase by rememberSaveable { mutableStateOf(false) }
+        val output = if (isUppercase) raw.uppercase() else raw
 
         ToolScaffold(
             title = "UUID Generator",
@@ -54,11 +53,7 @@ class UUIDTool : Tool {
                     onCheckedChange = { isUppercase = it }
                 )
                 Spacer(modifier = Modifier.width(16.dp))
-                Button(onClick = {
-                    val uuids = List(count) { UUID.randomUUID().toString() }
-                    val result = uuids.joinToString("\n")
-                    output = if (isUppercase) result.uppercase() else result
-                }) {
+                Button(onClick = { raw = UUID.randomUUID().toString() }) {
                     Text("Generate")
                 }
             }

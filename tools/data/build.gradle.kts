@@ -38,7 +38,7 @@ android {
 
 dependencies {
     implementation("org.yaml:snakeyaml:2.2")
-    implementation("org.json:json:20231013")
+    implementation("com.google.code.gson:gson:2.11.0")
     implementation(project(":tools:base"))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.activity:activity-compose:1.8.2")
@@ -52,6 +52,7 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.51.1")
     ksp("com.google.dagger:hilt-compiler:2.51.1")
 
+    testImplementation("junit:junit:4.13.2")
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     implementation(project(":core:ui"))

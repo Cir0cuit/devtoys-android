@@ -11,6 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private const val MAX_MATCHES = 1000
 
 
 class RegexTesterTool : Tool {
@@ -18,25 +25,19 @@ class RegexTesterTool : Tool {
     @Composable override fun Content(modifier: Modifier) {
         var regex by rememberSaveable { mutableStateOf("") }
         var input by rememberSaveable { mutableStateOf("") }
-        val output = remember(regex, input) {
-            if (regex.isEmpty()) "" else try {
-                val re = Regex(regex, setOf(RegexOption.MULTILINE))
-                val matchResults = re.findAll(input).toList()
-                if (matchResults.isEmpty()) {
-                    "No matches"
-                } else {
-                    val matches = mutableListOf<String>()
-                    matchResults.forEachIndexed { index, matchResult ->
-                        matches.add("Match ${index + 1}: ${matchResult.value}")
-                        if (matchResult.groups.size > 1) {
-                            matchResult.groups.drop(1).forEachIndexed { groupIndex, group ->
-                                matches.add("  Group ${groupIndex + 1}: ${group?.value ?: "null"}")
-                            }
-                        }
-                    }
-                    matches.joinToString("\n")
-                }
-            } catch (e: Exception) { "Error: ${e.message}" }
+        var output by remember { mutableStateOf("") }
+        LaunchedEffect(regex, input) {
+            if (regex.isEmpty()) {
+                output = ""
+                return@LaunchedEffect
+            }
+            delay(250)
+            val slowNotice = launch {
+                delay(2000)
+                output = "Still evaluating... the pattern may be too expensive (catastrophic backtracking)"
+            }
+            output = withContext(Dispatchers.IO) { evaluate(regex, input) }
+            slowNotice.cancel()
         }
         ToolScaffold("Regex Tester", modifier = modifier) {
             MonoTextField(regex, { regex = it }, "Regex Pattern", minLines = 2)
@@ -45,5 +46,28 @@ class RegexTesterTool : Tool {
             Spacer(modifier = Modifier.height(16.dp))
             OutputPanel(output)
         }
+    }
+
+    internal fun evaluate(regex: String, input: String): String = try {
+        val re = Regex(regex, setOf(RegexOption.MULTILINE))
+        val matches = mutableListOf<String>()
+        var count = 0
+        for (matchResult in re.findAll(input)) {
+            if (count == MAX_MATCHES) {
+                matches.add("... (truncated after $MAX_MATCHES matches)")
+                break
+            }
+            count++
+            matches.add("Match $count: ${matchResult.value}")
+            if (matchResult.groups.size > 1) {
+                matchResult.groups.drop(1).forEachIndexed { groupIndex, group ->
+                    matches.add("  Group ${groupIndex + 1}: ${group?.value ?: "null"}")
+                }
+            }
+        }
+        if (count == 0) "No matches" else matches.joinToString("\n")
+    } catch (e: Throwable) {
+        if (e is CancellationException) throw e
+        "Error: ${e.message}"
     }
 }

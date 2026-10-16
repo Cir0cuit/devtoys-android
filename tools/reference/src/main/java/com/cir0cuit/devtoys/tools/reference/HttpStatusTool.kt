@@ -29,15 +29,15 @@ class HttpStatusTool : Tool {
             "5xx Server Error" to mapOf(500 to "Internal Server Error", 501 to "Not Implemented", 502 to "Bad Gateway", 503 to "Service Unavailable", 504 to "Gateway Timeout", 505 to "HTTP Version Not Supported", 506 to "Variant Also Negotiates", 507 to "Insufficient Storage", 508 to "Loop Detected", 510 to "Not Extended", 511 to "Network Authentication Required")
         )
         
-        val expandedState = remember { mutableStateMapOf<String, Boolean>() }
+        var collapsed by rememberSaveable { mutableStateOf(listOf<String>()) }
         
         ToolScaffold("HTTP Status Codes", modifier = modifier, scrollable = false) {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 categories.forEach { (catName, statuses) ->
-                    val isExpanded = expandedState[catName] ?: true
+                    val isExpanded = catName !in collapsed
                     item {
                         Surface(
-                            modifier = Modifier.fillMaxWidth().clickable { expandedState[catName] = !isExpanded },
+                            modifier = Modifier.fillMaxWidth().clickable { collapsed = if (isExpanded) collapsed + catName else collapsed - catName },
                             color = MaterialTheme.colorScheme.surfaceVariant
                         ) {
                             Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {

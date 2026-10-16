@@ -29,6 +29,8 @@ enum class OutputFormat(val label: String, val formatter: DateTimeFormatter) {
     CUSTOM_SIMPLE("Simple Date/Time", DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"))
 }
 
+private const val SYSTEM_ZONE = "System"
+
 class TimestampTool : Tool {
     override val descriptor = ToolDescriptor("timestamp", android.R.string.untitled, android.R.string.untitled, Icons.Default.Schedule, ToolCategory.CONVERTERS, listOf("time", "stamp", "date"))
     
@@ -37,16 +39,13 @@ class TimestampTool : Tool {
         var input by rememberSaveable { mutableStateOf((System.currentTimeMillis() / 1000).toString()) }
         var inputFormat by rememberSaveable { mutableStateOf(InputFormat.SECONDS) }
         var outputFormat by rememberSaveable { mutableStateOf(OutputFormat.ISO_LOCAL) }
-        val defaultZone = ZoneId.systemDefault()
-        val defaultNow = Instant.now()
-        val defaultOffset = defaultZone.rules.getStandardOffset(defaultNow)
-        val defaultDst = defaultZone.rules.isDaylightSavings(defaultNow)
-        val defaultUtcStr = "UTC" + if (defaultOffset.id == "Z") "+00:00" else defaultOffset.id
+        val systemZoneLabel = "System (${ZoneId.systemDefault().id})"
 
-        var selectedUtc by rememberSaveable { mutableStateOf(defaultUtcStr) }
-        var isSummerTime by rememberSaveable { mutableStateOf(defaultDst) }
+        var selectedUtc by rememberSaveable { mutableStateOf(SYSTEM_ZONE) }
+        var isSummerTime by rememberSaveable { mutableStateOf(false) }
         
         val zoneId = remember(selectedUtc, isSummerTime) {
+            if (selectedUtc == SYSTEM_ZONE) return@remember ZoneId.systemDefault()
             val baseStr = selectedUtc.replace("UTC", "").replace("Z", "+00:00")
             val baseOffset = try { java.time.ZoneOffset.of(if (baseStr.isEmpty()) "+00:00" else baseStr) } catch(e: Exception) { java.time.ZoneOffset.UTC }
             val finalOffset = if (isSummerTime) java.time.ZoneOffset.ofTotalSeconds(baseOffset.totalSeconds + 3600) else baseOffset
@@ -132,22 +131,22 @@ class TimestampTool : Tool {
                         listOf(
                             "-12:00", "-11:00", "-10:00", "-09:30", "-09:00", "-08:00", "-07:00", "-06:00", "-05:00", "-04:00", "-03:30", "-03:00", "-02:00", "-01:00",
                             "+00:00", "+01:00", "+02:00", "+03:00", "+03:30", "+04:00", "+04:30", "+05:00", "+05:30", "+05:45", "+06:00", "+06:30", "+07:00", "+08:00", "+08:45", "+09:00", "+09:30", "+10:00", "+10:30", "+11:00", "+12:00", "+12:45", "+13:00", "+14:00"
-                        ).map { "UTC$it" }
+                        ).map { "UTC$it" }.let { listOf(SYSTEM_ZONE) + it }
                     }
 
                     ExposedDropdownMenuBox(expanded = tzExpanded, onExpandedChange = { tzExpanded = !tzExpanded }, modifier = Modifier.weight(1f)) {
                         OutlinedTextField(
-                            value = selectedUtc,
+                            value = if (selectedUtc == SYSTEM_ZONE) systemZoneLabel else selectedUtc,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("UTC Offset") },
+                            label = { Text("Time Zone") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tzExpanded) },
                             modifier = Modifier.menuAnchor().fillMaxWidth()
                         )
                         ExposedDropdownMenu(expanded = tzExpanded, onDismissRequest = { tzExpanded = false }) {
                             utcOffsets.forEach { zone ->
                                 DropdownMenuItem(
-                                    text = { Text(zone) },
+                                    text = { Text(if (zone == SYSTEM_ZONE) systemZoneLabel else zone) },
                                     onClick = { selectedUtc = zone; tzExpanded = false }
                                 )
                             }
@@ -157,7 +156,7 @@ class TimestampTool : Tool {
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                         Text("Summer time")
                         Spacer(Modifier.width(8.dp))
-                        Switch(checked = isSummerTime, onCheckedChange = { isSummerTime = it })
+                        Switch(checked = isSummerTime && selectedUtc != SYSTEM_ZONE, onCheckedChange = { isSummerTime = it }, enabled = selectedUtc != SYSTEM_ZONE)
                     }
                 }
 

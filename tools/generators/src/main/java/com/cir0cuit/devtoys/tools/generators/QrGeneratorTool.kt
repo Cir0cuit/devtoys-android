@@ -22,9 +22,22 @@ import androidx.core.content.FileProvider
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
+import com.google.zxing.WriterException
+import com.google.zxing.common.BitMatrix
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.charset.StandardCharsets
+
+/** Encoder hints for [input]: ISO-8859-1 (the QR default) when it suffices, otherwise UTF-8. */
+internal fun qrEncodeHints(input: String): Map<EncodeHintType, Any> =
+    if (StandardCharsets.ISO_8859_1.newEncoder().canEncode(input)) emptyMap()
+    else mapOf(EncodeHintType.CHARACTER_SET to "UTF-8")
+
+/** Encodes [input] as a QR code; throws [WriterException] when it does not fit. */
+internal fun encodeQrMatrix(input: String, size: Int = 512): BitMatrix =
+    MultiFormatWriter().encode(input, BarcodeFormat.QR_CODE, size, size, qrEncodeHints(input))
 
 class QrGeneratorTool : Tool {
     override val descriptor = ToolDescriptor("qr-gen", android.R.string.untitled, android.R.string.untitled, Icons.Default.QrCode, ToolCategory.GENERATORS, listOf("qr", "barcode", "generator"))
@@ -32,20 +45,28 @@ class QrGeneratorTool : Tool {
         var input by rememberSaveable { mutableStateOf("https://devtoys.app") }
         val context = LocalContext.current
         
-        val bitmap = remember(input) {
-            if (input.isEmpty()) null else try {
-                val matrix = MultiFormatWriter().encode(input, BarcodeFormat.QR_CODE, 512, 512)
+        val qrResult: Pair<Bitmap?, String?> = remember(input) {
+            if (input.isEmpty()) null to null else try {
+                val matrix = encodeQrMatrix(input)
                 val width = matrix.width
                 val height = matrix.height
-                val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-                for (x in 0 until width) {
-                    for (y in 0 until height) {
-                        bmp.setPixel(x, y, if (matrix.get(x, y)) Color.BLACK else Color.WHITE)
+                val pixels = IntArray(width * height)
+                for (y in 0 until height) {
+                    val offset = y * width
+                    for (x in 0 until width) {
+                        pixels[offset + x] = if (matrix.get(x, y)) Color.BLACK else Color.WHITE
                     }
                 }
-                bmp
-            } catch (e: Exception) { null }
+                val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+                bmp.setPixels(pixels, 0, width, 0, 0, width, height)
+                bmp to null
+            } catch (e: WriterException) {
+                null to "Input too long for a QR code."
+            } catch (e: Exception) {
+                null to (e.message ?: "Could not generate QR code.")
+            }
         }
+        val bitmap = qrResult.first
         
         val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri: android.net.Uri? ->
             uri?.let {
@@ -103,7 +124,12 @@ class QrGeneratorTool : Tool {
                     }
                 }
             } else {
-                Text("Enter text to generate QR code.")
+                val error = qrResult.second
+                if (error != null) {
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                } else {
+                    Text("Enter text to generate QR code.")
+                }
             }
         }
     }

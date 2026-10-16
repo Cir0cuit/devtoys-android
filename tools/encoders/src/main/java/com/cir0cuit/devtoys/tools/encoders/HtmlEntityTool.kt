@@ -22,6 +22,54 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 
+internal object HtmlEntityCodec {
+    private val namedEntities: Map<Int, String> by lazy {
+        val map = mutableMapOf<Int, String>()
+        HtmlEntityData.categoriesMap.values.flatten().forEach { (charStr, entity) ->
+            if (charStr.isNotEmpty() && charStr.codePointCount(0, charStr.length) == 1) map[charStr.codePointAt(0)] = entity
+        }
+        map
+    }
+    private val reverseEntities: Map<String, String> by lazy {
+        HtmlEntityData.categoriesMap.values.flatten().associate { (symbol, entity) -> entity to symbol }
+    }
+    private val entityRegex = Regex("&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
+
+    fun encode(input: String): String {
+        if (input.isEmpty()) return ""
+        val sb = java.lang.StringBuilder()
+        var i = 0
+        while (i < input.length) {
+            val cp = input.codePointAt(i)
+            if (cp == 39) {
+                sb.append("&#39;")
+            } else if (cp > 127 || cp == 34 || cp == 38 || cp == 60 || cp == 62) {
+                sb.append(namedEntities[cp] ?: "&#$cp;")
+            } else {
+                sb.append(cp.toChar())
+            }
+            i += java.lang.Character.charCount(cp)
+        }
+        return sb.toString()
+    }
+
+    fun decode(input: String): String =
+        entityRegex.replace(input) { m ->
+            val body = m.groupValues[1]
+            if (!body.startsWith("#")) return@replace reverseEntities[m.value] ?: m.value
+            // Regex guarantees valid digits, so null here means overflow -> out of range.
+            val cp = (if (body[1] == 'x' || body[1] == 'X') body.substring(2).toIntOrNull(16) else body.substring(1).toIntOrNull()) ?: -1
+            // WHATWG numeric character reference end state
+            when {
+                cp <= 0 || cp > 0x10FFFF || cp in 0xD800..0xDFFF -> "�"
+                cp in 0x80..0x9F -> String(byteArrayOf(cp.toByte()), windows1252).takeIf { it != "�" } ?: cp.toChar().toString()
+                else -> String(Character.toChars(cp))
+            }
+        }
+
+    private val windows1252 = charset("windows-1252")
+}
+
 class HtmlEntityTool : Tool {
     override val descriptor = ToolDescriptor("html-entity", android.R.string.untitled, android.R.string.untitled, Icons.Default.Html, ToolCategory.ENCODERS_DECODERS, listOf("html", "entity", "encode"))
     
@@ -46,40 +94,13 @@ class HtmlEntityTool : Tool {
     }
 
     @Composable fun EncoderDecoder() {
-        var encodeInput by rememberSaveable { mutableStateOf("") }
-        var decodeInput by rememberSaveable { mutableStateOf("") }
+        var encodeInput by rememberSaveableText()
+        var decodeInput by rememberSaveableText()
         var isEncodeMode by rememberSaveable { mutableStateOf(true) }
 
-        val namedEntities = remember {
-            val map = mutableMapOf<Int, String>()
-            HtmlEntityData.categoriesMap.values.flatten().forEach { (charStr, entity) ->
-                if (charStr.isNotEmpty() && charStr.length <= 2) map[charStr.codePointAt(0)] = entity
-            }
-            map
-        }
-        val encodeOutput = remember(encodeInput) {
-            if (encodeInput.isEmpty()) "" else {
-                val sb = java.lang.StringBuilder()
-                var i = 0
-                while (i < encodeInput.length) {
-                    val cp = encodeInput.codePointAt(i)
-                    val named = namedEntities[cp]
-                    if (named != null) {
-                        sb.append(named)
-                    } else if (cp > 127 || cp == 34 || cp == 38 || cp == 39 || cp == 60 || cp == 62) {
-                        sb.append("&#$cp;")
-                    } else {
-                        sb.append(cp.toChar())
-                    }
-                    i += java.lang.Character.charCount(cp)
-                }
-                sb.toString()
-            }
-        }
-        val decodeOutput = remember(decodeInput) {
-            if (decodeInput.isEmpty()) "" else android.text.Html.fromHtml(decodeInput, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
-        }
-        
+        val encodeOutput = remember(encodeInput) { HtmlEntityCodec.encode(encodeInput) }
+        val decodeOutput = remember(decodeInput) { HtmlEntityCodec.decode(decodeInput) }
+
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             TabRow(selectedTabIndex = if (isEncodeMode) 0 else 1) {
                 Tab(selected = isEncodeMode, onClick = { isEncodeMode = true }, text = { Text("Encode") })
