@@ -10,56 +10,89 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
-import com.google.gson.FormattingStyle
-import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
-import com.google.gson.JsonParser
-import com.google.gson.JsonSyntaxException
-import com.google.gson.Strictness
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
-import java.io.StringReader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
-private val indents = listOf("2 spaces", "4 spaces", "Minified")
+internal enum class JsonMode(val label: String) { FORMAT("Format"), ESCAPE("Escape"), UNESCAPE("Unescape") }
 
-class JsonFormatterTool : Tool {
-    override val descriptor = ToolDescriptor("json-formatter", "JSON Formatter", "Format and validate JSON", Icons.Default.DataObject, ToolCategory.FORMATTERS, listOf("json", "format", "minify"))
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable override fun Content(modifier: Modifier) {
-        var input by rememberSaveable { mutableStateOf("{\"name\":\"devtoys\",\"tags\":[\"json\",\"format\"],\"stars\":42}") }
-        var indent by rememberSaveable { mutableStateOf(0) }
-        val output = remember(input, indent) {
-            if (input.isBlank()) "" else try {
-                val style = when (indent) {
-                    0 -> FormattingStyle.PRETTY
-                    1 -> FormattingStyle.PRETTY.withIndent("    ")
-                    else -> FormattingStyle.COMPACT
-                }
-                GsonBuilder().setFormattingStyle(style).disableHtmlEscaping().serializeNulls().create().toJson(parseStrictJson(input))
-            } catch (e: Exception) { "Error: ${e.message}" }
+/** Output text plus the parsed tree when there is one. */
+private class JsonResult(val text: String, val tree: JsonElement? = null)
+
+/**
+ * Format: parse and re-indent. Escape: text to a JSON string literal.
+ * Unescape: string literal to text, formatted when the text is itself a JSON object or array.
+ * Throws IllegalArgumentException with a user-facing message.
+ */
+internal fun runJsonTool(input: String, mode: JsonMode, indent: JsonIndent, sort: Boolean, lenient: Boolean): Pair<String, JsonElement?> = when (mode) {
+    JsonMode.ESCAPE -> escapeJsonString(input) to null
+    JsonMode.UNESCAPE -> {
+        val text = try { unescapeJsonString(input) } catch (e: Exception) {
+            throw IllegalArgumentException("Not a valid JSON string. ${describeJsonError(e)}")
         }
-        ToolScaffold(descriptor.title, modifier = modifier) {
-            PasteableInput(input, { input = it }, "JSON input")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                indents.forEachIndexed { i, label ->
-                    SegmentedButton(
-                        selected = indent == i,
-                        onClick = { indent = i },
-                        shape = SegmentedButtonDefaults.itemShape(i, indents.size),
-                        icon = {}
-                    ) { Text(label, maxLines = 1) }
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            ResultPanel(output)
-        }
+        val nested = runCatching { parseJson(text, lenient) }.getOrNull()?.takeIf { it.isJsonObject || it.isJsonArray }
+        if (nested != null) formatJson(nested, indent, sort) to nested else text to null
+    }
+    JsonMode.FORMAT -> try {
+        val tree = parseJson(input, lenient)
+        formatJson(tree, indent, sort) to tree
+    } catch (e: Exception) {
+        val msg = describeJsonError(e)
+        throw IllegalArgumentException(if (lenient || "Lenient" in msg) msg else "$msg Fix it there or turn on Lenient.")
     }
 }
 
-/** Parses one strict JSON document and rejects anything after it. */
-internal fun parseStrictJson(input: String): JsonElement {
-    val reader = JsonReader(StringReader(input)).apply { setStrictness(Strictness.STRICT) }
-    val element = JsonParser.parseReader(reader)
-    if (reader.peek() != JsonToken.END_DOCUMENT) throw JsonSyntaxException("Unexpected trailing content at ${reader.path}")
-    return element
+class JsonFormatterTool : Tool {
+    override val descriptor = ToolDescriptor(
+        "json-formatter", "JSON Formatter", "Format, validate and escape JSON", Icons.Default.DataObject,
+        ToolCategory.FORMATTERS, listOf("json", "format", "minify", "validate", "escape", "stringify", "tree", "sort")
+    )
+
+    @Composable override fun Content(modifier: Modifier) {
+        var input by rememberCappedText("{\"name\":\"devtoys\",\"tags\":[\"json\",\"format\"],\"stars\":42}")
+        var mode by rememberSaveable { mutableStateOf(JsonMode.FORMAT) }
+        var indent by rememberSaveable { mutableStateOf(JsonIndent.TWO) }
+        var sort by rememberSaveable { mutableStateOf(false) }
+        var lenient by rememberSaveable { mutableStateOf(false) }
+        var tree by rememberSaveable { mutableStateOf(false) }
+        var result by remember { mutableStateOf(JsonResult("")) }
+        LaunchedEffect(input, mode, indent, sort, lenient) {
+            if (input.isBlank()) {
+                result = JsonResult("")
+                return@LaunchedEffect
+            }
+            delay(300)
+            result = withContext(Dispatchers.Default) {
+                try {
+                    runJsonTool(input, mode, indent, sort, lenient).let { (text, element) -> JsonResult(text, element) }
+                } catch (e: Exception) {
+                    JsonResult("Error: ${e.message}")
+                }
+            }
+        }
+        ToolScaffold(descriptor.title, modifier = modifier) {
+            FileInput(input, { input = it }, if (mode == JsonMode.ESCAPE) "Text input" else "JSON input")
+            Segmented(JsonMode.entries, mode, { it.label }, { mode = it })
+            if (mode != JsonMode.ESCAPE) {
+                Spacer(Modifier.height(12.dp))
+                Text("Indentation", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Segmented(JsonIndent.entries, indent, { it.label }, { indent = it })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = sort, onClick = { sort = !sort }, label = { Text("Sort keys", maxLines = 1) })
+                    FilterChip(selected = lenient, onClick = { lenient = !lenient }, label = { Text("Lenient", maxLines = 1) })
+                    FilterChip(selected = tree, onClick = { tree = !tree }, label = { Text("Tree view", maxLines = 1) })
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            val r = result
+            val root = r.tree
+            if (tree && mode != JsonMode.ESCAPE && root != null) JsonTree(root)
+            else ResultPanel(r.text)
+            if (r.text.isNotEmpty() && !r.text.startsWith("Error: ")) {
+                OutputActions(r.text, if (root != null) "formatted.json" else "output.txt", if (root != null) "application/json" else "text/plain")
+            }
+        }
+    }
 }

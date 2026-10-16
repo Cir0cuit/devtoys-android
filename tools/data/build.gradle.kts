@@ -37,7 +37,7 @@ android {
 }
 
 dependencies {
-    implementation("org.yaml:snakeyaml:2.2")
+    implementation("org.yaml:snakeyaml:2.7")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation(project(":tools:base"))
     implementation("androidx.core:core-ktx:1.12.0")

@@ -2,6 +2,7 @@ package com.cir0cuit.devtoys.tools.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.xml.sax.InputSource
@@ -84,7 +85,7 @@ class XmlFormatterTest {
 
     @Test
     fun dtdSubsetDetectionSkipsPrologAndBom() {
-        assertTrue(hasInternalDtdSubset("﻿<?xml version=\"1.0\"?>\n<!-- c -->\n<!DOCTYPE a [ ]><a/>"))
+        assertTrue(hasInternalDtdSubset("${Char(0xFEFF)}<?xml version=\"1.0\"?>\n<!-- c -->\n<!DOCTYPE a [ ]><a/>"))
         assertTrue(hasInternalDtdSubset("<!DOCTYPE a SYSTEM 'x.dtd' [<!ENTITY e 'v'>]><a/>"))
     }
 
@@ -109,5 +110,51 @@ class XmlFormatterTest {
         // A formatter must not drop the document type declaration (XML 1.0 sec 2.8).
         val out = fmt("<!DOCTYPE html SYSTEM \"about:legacy-compat\"><html/>")
         assertTrue(out, out.contains("<!DOCTYPE html"))
+    }
+
+    @Test
+    fun indentsWithFourSpaces() {
+        val out = formatXml("<a><b>1</b></a>", "    ").replace("\r\n", "\n")
+        assertTrue(out, out.contains("<a>\n    <b>1</b>\n</a>"))
+    }
+
+    @Test
+    fun minifyDropsCommentsAndIndentationButKeepsMixedText() {
+        val out = formatXml("<a>\n  <!-- c -->\n  <b> x </b>\n  <p>Hi <i>u</i> !</p>\n</a>", null)
+        assertTrue(out, out.endsWith("?><a><b> x </b><p>Hi <i>u</i> !</p></a>"))
+    }
+
+    @Test
+    fun parseErrorReportsLineAndColumn() {
+        val out = formatXml("<a>\n<b></a>")
+        assertTrue(out, out.startsWith("Error: Line 2, column "))
+    }
+
+    @Test
+    fun xpathListsMatchingAttributesAndElements() {
+        val xml = "<r><i id=\"1\">a</i><i id=\"2\">b</i></r>"
+        assertEquals(XPathResult("2 matches", "id=\"1\"\nid=\"2\""), evaluateXPath(xml, "//i/@id"))
+        assertEquals(XPathResult("1 match", "<i id=\"1\">a</i>"), evaluateXPath(xml, "//i[1]"))
+        assertEquals(XPathResult("No matches", ""), evaluateXPath(xml, "//x"))
+    }
+
+    @Test
+    fun xpathScalarResults() {
+        val xml = "<r><i>a</i><i>b</i></r>"
+        assertEquals(XPathResult("Result", "2"), evaluateXPath(xml, "count(//i)"))
+        assertEquals(XPathResult("Result", "true"), evaluateXPath(xml, "boolean(//i)"))
+    }
+
+    @Test
+    fun xpathResolvesDocumentPrefixesAndDefaultNamespace() {
+        val xml = "<r xmlns=\"urn:a\" xmlns:p=\"urn:p\"><p:c>v</p:c><i>1</i></r>"
+        assertEquals("v", evaluateXPath(xml, "string(//p:c)")?.text)
+        assertEquals("1", evaluateXPath(xml, "count(//d:i)")?.text)
+    }
+
+    @Test
+    fun xpathInvalidExpressionAndInvalidXml() {
+        assertTrue(evaluateXPath("<r/>", "//i[")?.error != null)
+        assertNull(evaluateXPath("<r>", "//r"))
     }
 }

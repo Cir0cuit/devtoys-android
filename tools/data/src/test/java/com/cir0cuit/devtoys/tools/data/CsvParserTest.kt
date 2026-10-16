@@ -1,5 +1,6 @@
 package com.cir0cuit.devtoys.tools.data
 
+import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -122,5 +123,69 @@ class CsvParserTest {
     fun parsedQuotedFieldsRenderIntoSingleCells() {
         val html = toHtmlTable(parseCsv("h\n\"a,b\""))
         assertTrue(html.contains("<td>a,b</td>"))
+    }
+
+    @Test
+    fun otherDelimiters() {
+        assertEquals(listOf(listOf("a", "b"), listOf("1", "2")), parseCsv("a;b\n1;2", ';'))
+        assertEquals(listOf(listOf("a", "b,c")), parseCsv("a\tb,c", '\t'))
+    }
+
+    @Test
+    fun delimiterDetection() {
+        assertEquals(';', detectCsvDelimiter("a;b;c\n1,2,3,4,5"))
+        assertEquals('\t', detectCsvDelimiter("a\tb"))
+        assertEquals('|', detectCsvDelimiter("a|b|c"))
+        assertEquals(',', detectCsvDelimiter("\"x;y;z\",w"))
+        assertEquals(',', detectCsvDelimiter("abc"))
+    }
+
+    @Test
+    fun withoutHeaderRowColumnNamesAreAdded() {
+        assertEquals(listOf(listOf("Column 1", "Column 2"), listOf("1", "2")), readCsvTable("1,2", null, false).rows)
+        assertEquals(';', readCsvTable("a;b", null, true).delimiter)
+    }
+
+    @Test
+    fun csvOutputQuotesPerRfc4180AndRoundTrips() {
+        val rows = listOf(listOf("a,b", "say \"hi\"", "l1\nl2", "plain"))
+        assertEquals("\"a,b\",\"say \"\"hi\"\"\",\"l1\nl2\",plain", toCsv(rows))
+        assertEquals(rows, parseCsv(toCsv(rows)))
+    }
+
+    @Test
+    fun csvToJsonInfersTypes() {
+        val rows = listOf(listOf("n", "b", "s", "e"), listOf("1.5", "true", "007", ""))
+        assertEquals(
+            JsonParser.parseString("[{\"n\":1.5,\"b\":true,\"s\":\"007\",\"e\":null}]"),
+            JsonParser.parseString(csvToJson(rows, inferTypes = true))
+        )
+        assertEquals(
+            JsonParser.parseString("[{\"n\":\"1.5\",\"b\":\"true\",\"s\":\"007\",\"e\":\"\"}]"),
+            JsonParser.parseString(csvToJson(rows, inferTypes = false))
+        )
+    }
+
+    @Test
+    fun jsonObjectsFlattenToRows() {
+        val rows = jsonToCsvRows("[{\"a\":1,\"b\":{\"c\":\"x\"}},{\"a\":2,\"d\":[1,2],\"n\":null}]")
+        assertEquals(listOf(listOf("a", "b.c", "d", "n"), listOf("1", "x", "", ""), listOf("2", "", "[1,2]", "")), rows)
+        assertEquals(listOf(listOf("h1", "h2"), listOf("1", "2")), jsonToCsvRows("[[\"h1\",\"h2\"],[1,2]]"))
+    }
+
+    @Test
+    fun jsonInputIsDetectedAndErrorsAreReported() {
+        assertTrue(readCsvTable("  [{\"a\":1}]", null, true).fromJson)
+        assertTrue(readCsvTable("[1,", null, true).error != null)
+    }
+
+    @Test
+    fun sqlInsertEscapesQuotesAndNames() {
+        val rows = listOf(listOf("id", "full name"), listOf("1", "O'Brien"), listOf("2", ""))
+        assertEquals(
+            "INSERT INTO public.people (id, \"full name\") VALUES\n  ('1', 'O''Brien'),\n  ('2', NULL);",
+            toSqlInsert(rows, "public.people", emptyAsNull = true)
+        )
+        assertTrue(toSqlInsert(rows, "", emptyAsNull = false).endsWith("('2', '');"))
     }
 }
