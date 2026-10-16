@@ -5,16 +5,17 @@ All processing happens on the device; the app has no network access, telemetry o
 
 ## Tools
 
-- **Encoders / decoders:** Base64, Base64 image, URL, HTML entities, hex, ROT13 / Caesar, JWT decoder
-- **Formatters:** JSON, XML, SQL
-- **Converters:** YAML ⇄ JSON, number bases, Unix timestamps, cron expressions, JSON to types
-- **Text:** case converter, line tools, text diff, regex tester, Markdown editor and preview
-- **Generators:** UUID, password, Lorem Ipsum, QR code
-- **Cryptography:** hash calculator, HMAC, X.509 certificate decoder
-- **Network / system:** CIDR calculator, MAC address vendor lookup, chmod calculator, HTTP status codes
-- **Graphics:** color picker, color palette
-- **Data:** CSV viewer
-- **Reference:** cheat sheets
+57 offline tools, including:
+
+- **Encoders / decoders:** Base64 (URL-safe, MIME), Base32/58/85/36, URL with query parser, HTML entities, hex dumps, GZip/Deflate, classical ciphers, JWT (decode, verify, sign)
+- **Formatters & data:** JSON (tree view, sort, diff), XML (XPath), SQL, YAML ⇄ JSON, XML ⇄ JSON, CSV ⇄ JSON
+- **Converters:** timestamps and date math, cron (Unix, Spring, Quartz), number bases and bit widths, units, JSON to types (Kotlin, TypeScript, Swift, Go, Java, Python, C#, Dart, Rust)
+- **Text:** case and slugs, line tools, diff with patch export, regex tester, find and replace, string escaping, statistics, Unicode inspector, list compare, Markdown editor
+- **Generators:** QR and 12 barcode formats with scanning from photos, UUID (v1–v7), ULID/NanoID/Snowflake/KSUID, passwords and passphrases, tokens, Lorem Ipsum
+- **Cryptography:** hashes and checksum files, HMAC verify, TOTP/HOTP, AES text encryption, RSA/EC key pairs, X.509 decoder
+- **Network & system:** CIDR and subnetting, IP converter, MAC vendor lookup, chmod/umask, ports, MIME types, HTTP status codes, device info
+- **Graphics:** color converter (Lab, OKLCH), palettes and tints, WCAG contrast checker, image to Base64
+- **Reference:** cheat sheets, semver checker, math evaluator, Basic auth headers
 
 ## Building
 
@@ -55,3 +56,8 @@ Pull requests are welcome.
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
+
+Bundled third-party assets:
+
+- IBM Plex Sans and IBM Plex Mono, SIL Open Font License 1.1 ([core/designsystem/FONTS-LICENSE.txt](core/designsystem/FONTS-LICENSE.txt))
+- EFF Large Wordlist for passphrases, © Electronic Frontier Foundation, CC BY 3.0 US
