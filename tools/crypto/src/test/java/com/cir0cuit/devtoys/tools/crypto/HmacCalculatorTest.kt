@@ -1,6 +1,7 @@
 package com.cir0cuit.devtoys.tools.crypto
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.MessageDigest
@@ -8,25 +9,24 @@ import java.security.MessageDigest
 /** Vectors from RFC 2202 (HMAC-MD5/SHA-1) and RFC 4231 (HMAC-SHA-256/512). */
 class HmacCalculatorTest {
 
-    private val key = "Jefe"
-    private val msg = "what do ya want for nothing?"
+    private val key = "Jefe".toByteArray()
+    private val msg = "what do ya want for nothing?".toByteArray()
+
+    private fun hmacHex(algo: String, key: ByteArray, data: ByteArray) = computeHmac(algo, key, data).toLowerHex()
 
     @Test
     fun rfc2202HmacMd5TestCase2() {
-        assertEquals("750c783e6ab0b503eaa86e310a5db738", computeHmac("HmacMD5", key, msg))
+        assertEquals("750c783e6ab0b503eaa86e310a5db738", hmacHex("HmacMD5", key, msg))
     }
 
     @Test
     fun rfc2202HmacSha1TestCase2() {
-        assertEquals("effcdf6ae5eb2fa2d27416d5f184df9c259a7c79", computeHmac("HmacSHA1", key, msg))
+        assertEquals("effcdf6ae5eb2fa2d27416d5f184df9c259a7c79", hmacHex("HmacSHA1", key, msg))
     }
 
     @Test
     fun rfc4231HmacSha256TestCase2() {
-        assertEquals(
-            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
-            computeHmac("HmacSHA256", key, msg),
-        )
+        assertEquals("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", hmacHex("HmacSHA256", key, msg))
     }
 
     @Test
@@ -34,45 +34,90 @@ class HmacCalculatorTest {
         assertEquals(
             "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea250554" +
                 "9758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737",
-            computeHmac("HmacSHA512", key, msg),
+            hmacHex("HmacSHA512", key, msg),
         )
     }
 
     @Test
-    fun emptySecretYieldsEmptyOutput() {
-        assertEquals("", computeHmac("HmacSHA256", "", "data"))
+    fun rfc4231TestCase1WithHexKey() {
+        // Key 0x0b * 20, data "Hi There".
+        val hexKey = decodeInput("0b".repeat(20), 1)
+        assertEquals(
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
+            hmacHex("HmacSHA256", hexKey, "Hi There".toByteArray()),
+        )
+        assertEquals(
+            "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cde" +
+                "daa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854",
+            hmacHex("HmacSHA512", hexKey, "Hi There".toByteArray()),
+        )
+    }
+
+    @Test
+    fun rfc4231TestCase3WithHexKeyAndHexData() {
+        val mac = computeHmac("HmacSHA256", decodeInput("aa".repeat(20), 1), decodeInput("dd".repeat(50), 1))
+        assertEquals("773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe", mac.toLowerHex())
+    }
+
+    @Test
+    fun base64KeyMatchesRawBytes() {
+        assertEquals(hmacHex("HmacSHA256", key, msg), hmacHex("HmacSHA256", decodeInput("SmVmZQ==", 2), msg))
+    }
+
+    @Test
+    fun outputRows() {
+        val mac = computeHmac("HmacSHA256", decodeInput("0b".repeat(20), 1), "Hi There".toByteArray())
+        assertEquals(
+            listOf(
+                "Hex" to "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
+                "Base64" to "sDRMYdjbOFNcqK/OrwvxK4gdwgDJgz2nJuk3bC4yz/c=",
+                "Base64url" to "sDRMYdjbOFNcqK_OrwvxK4gdwgDJgz2nJuk3bC4yz_c",
+            ),
+            hmacRows(mac),
+        )
+    }
+
+    @Test
+    fun signatureVerificationAcceptsWebhookFormats() {
+        val mac = computeHmac("HmacSHA256", key, msg)
+        val hex = mac.toLowerHex()
+        assertTrue(signatureMatches(hex, mac))
+        assertTrue(signatureMatches("sha256=$hex", mac))
+        assertTrue(signatureMatches("v1=$hex", mac))
+        assertTrue(signatureMatches(" v0=${hex.uppercase()} ", mac))
+        assertTrue(signatureMatches(hmacRows(mac)[1].second, mac))
+        assertTrue(signatureMatches(hmacRows(mac)[2].second, mac))
+        assertFalse(signatureMatches(hex.dropLast(1) + "0", mac))
+        assertFalse(signatureMatches("", mac))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun emptyKeyIsRejected() {
+        computeHmac("HmacSHA256", ByteArray(0), msg)
     }
 
     @Test
     fun emptyMessageWithKeyIsStillAuthenticated() {
         // RFC 2104 defines HMAC for zero-length text; it must not be suppressed.
-        val out = computeHmac("HmacSHA256", "key", "")
-        assertEquals(referenceHmac("SHA-256", 64, "key".toByteArray(), ByteArray(0)), out)
+        assertEquals(
+            referenceHmac("SHA-256", 64, "key".toByteArray(), ByteArray(0)),
+            hmacHex("HmacSHA256", "key".toByteArray(), ByteArray(0)),
+        )
     }
 
     @Test
     fun keyLongerThanBlockSizeIsHashedFirst() {
-        // RFC 4231 test case 6 structure: 131-byte key > 64-byte block.
-        val longKey = "k".repeat(131)
+        val longKey = "k".repeat(131).toByteArray()
         assertEquals(
-            referenceHmac("SHA-256", 64, longKey.toByteArray(), "Test".toByteArray()),
-            computeHmac("HmacSHA256", longKey, "Test"),
+            referenceHmac("SHA-256", 64, longKey, "Test".toByteArray()),
+            hmacHex("HmacSHA256", longKey, "Test".toByteArray()),
         )
     }
 
     @Test
-    fun keyAndMessageEncodedAsUtf8() {
-        val k = "klucz-ż"
-        val m = "wiadomość ✓"
-        assertEquals(
-            referenceHmac("SHA-512", 128, k.toByteArray(Charsets.UTF_8), m.toByteArray(Charsets.UTF_8)),
-            computeHmac("HmacSHA512", k, m),
-        )
-    }
-
-    @Test
-    fun unknownAlgorithmReturnsError() {
-        assertTrue(computeHmac("HmacNOPE", "k", "m").startsWith("Error:"))
+    fun badKeyEncodingNamesTheField() {
+        val e = runCatching { decodeInput("zz", 1, "Key") }.exceptionOrNull()
+        assertEquals("Key is not valid hex. Use pairs of 0-9 and a-f.", e?.message)
     }
 
     /** Straight RFC 2104: H((K' xor opad) || H((K' xor ipad) || text)). */
