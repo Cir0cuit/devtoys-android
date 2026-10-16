@@ -44,6 +44,11 @@ dependencies {
     implementation("io.noties.markwon:html:4.6.2")
     implementation("io.noties.markwon:image:4.6.2")
     implementation("io.noties.markwon:linkify:4.6.2")
+    // Already pulled in by Markwon; declared because MarkdownFormatting.kt renders HTML with it directly.
+    implementation("com.atlassian.commonmark:commonmark:0.13.0")
+    implementation("com.atlassian.commonmark:commonmark-ext-gfm-tables:0.13.0")
+    implementation("com.atlassian.commonmark:commonmark-ext-gfm-strikethrough:0.13.0")
+    implementation("androidx.palette:palette:1.0.0")
     implementation("com.cronutils:cron-utils:9.2.1")
     implementation("org.json:json:20231013")
     implementation(project(":tools:base"))

@@ -5,9 +5,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -16,21 +16,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
-import com.cronutils.descriptor.CronDescriptor
-import com.cronutils.model.CronType
-import com.cronutils.model.definition.CronDefinitionBuilder
 import com.cronutils.model.time.ExecutionTime
-import com.cronutils.parser.CronParser
 import kotlinx.coroutines.delay
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.util.Locale
 
 enum class CronOutputFormat(val label: String, val formatter: DateTimeFormatter) {
     STANDARD("Standard", DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")),
@@ -49,55 +46,53 @@ class CronTool : Tool {
         description = "Read, build and preview cron schedules",
         icon = Icons.Default.Event,
         category = ToolCategory.CONVERTERS,
-        keywords = listOf("cron", "schedule")
+        keywords = listOf("cron", "schedule", "quartz", "spring", "crontab", "kubernetes", "systemd", "eventbridge")
     )
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
         var tabIndex by rememberSaveable { mutableStateOf(0) }
-        var input by rememberSaveable { mutableStateOf("* * * * * *") }
-        var includeSeconds by rememberSaveable { mutableStateOf(true) }
+        var input by rememberSaveable { mutableStateOf("*/5 * * * *") }
+        var dialect by rememberSaveable { mutableStateOf(CronDialect.UNIX) }
         var outputFormat by rememberSaveable { mutableStateOf(CronOutputFormat.STANDARD) }
         var nextExecutionsCount by rememberSaveable { mutableStateOf(5) }
+        var zoneId by rememberSaveable { mutableStateOf(ZoneId.systemDefault().id) }
+        var picking by rememberSaveable { mutableStateOf(false) }
+        val zone = remember(zoneId) { runCatching { ZoneId.of(zoneId) }.getOrDefault(ZoneId.systemDefault()) }
 
-        var bSec by rememberSaveable { mutableStateOf("*") }
+        var bSec by rememberSaveable { mutableStateOf("0") }
         var bMin by rememberSaveable { mutableStateOf("*") }
         var bHour by rememberSaveable { mutableStateOf("*") }
         var bDay by rememberSaveable { mutableStateOf("*") }
         var bMonth by rememberSaveable { mutableStateOf("*") }
         var bDayWeek by rememberSaveable { mutableStateOf("*") }
 
-        val activeCron = if (tabIndex == 0) input.trim() else {
-            if (includeSeconds) "$bSec $bMin $bHour $bDay $bMonth $bDayWeek" else "$bMin $bHour $bDay $bMonth $bDayWeek"
-        }
+        val activeCron = if (tabIndex == 0) input.trim() else buildCron(dialect, bSec, bMin, bHour, bDay, bMonth, bDayWeek)
+        val seconds = dialect.hasSeconds
 
-        var now by remember { mutableStateOf(ZonedDateTime.now()) }
-        LaunchedEffect(includeSeconds) {
+        var now by remember { mutableStateOf(ZonedDateTime.now(zone)) }
+        LaunchedEffect(seconds, zone) {
             while (true) {
-                val current = ZonedDateTime.now()
-                now = current.truncatedTo(if (includeSeconds) ChronoUnit.SECONDS else ChronoUnit.MINUTES)
-                val elapsedMs = current.nano / 1_000_000L + if (includeSeconds) 0L else current.second * 1000L
-                val periodMs = if (includeSeconds) 1000L else 60_000L
+                val current = ZonedDateTime.now(zone)
+                now = current.truncatedTo(if (seconds) ChronoUnit.SECONDS else ChronoUnit.MINUTES)
+                val elapsedMs = current.nano / 1_000_000L + if (seconds) 0L else current.second * 1000L
+                val periodMs = if (seconds) 1000L else 60_000L
                 delay((periodMs - elapsedMs).coerceAtLeast(1L))
             }
         }
 
-        val parsed = remember(activeCron, includeSeconds) {
-            runCatching {
-                val cron = CronParser(CronDefinitionBuilder.instanceDefinitionFor(if (includeSeconds) CronType.SPRING else CronType.UNIX)).parse(activeCron)
-                cron to CronDescriptor.instance(Locale.ENGLISH).describe(cron)
-            }.getOrNull()
-        }
-        val runs = remember(parsed, outputFormat, nextExecutionsCount, now) {
+        val parsed = remember(activeCron, dialect) { runCatching { parseCron(dialect, activeCron) }.getOrNull() }
+        val runs = remember(parsed, nextExecutionsCount, now) {
             parsed?.let { (cron, _) ->
                 runCatching {
                     val executionTime = ExecutionTime.forCron(cron)
-                    generateSequence(executionTime.nextExecution(now).orElse(null)) { executionTime.nextExecution(it).orElse(null) }
-                        .take(nextExecutionsCount)
-                        .map { it.format(outputFormat.formatter) }
-                        .toList()
+                    val next = generateSequence(executionTime.nextExecution(now).orElse(null)) { executionTime.nextExecution(it).orElse(null) }
+                        .take(nextExecutionsCount).toList()
+                    val previous = generateSequence(executionTime.lastExecution(now).orElse(null)) { executionTime.lastExecution(it).orElse(null) }
+                        .take(nextExecutionsCount).toList()
+                    next to previous
                 }.getOrNull()
-            }.orEmpty()
+            } ?: (emptyList<ZonedDateTime>() to emptyList())
         }
 
         ToolScaffold(descriptor.title, modifier = modifier) {
@@ -113,12 +108,13 @@ class CronTool : Tool {
             } else {
                 val parts = listOfNotNull(
                     CronPart("Second", bSec, { bSec = it }, listOf("Every second" to "*", "At second 0" to "0", "Every 5 seconds" to "*/5", "Every 15 seconds" to "*/15", "Every 30 seconds" to "*/30"))
-                        .takeIf { includeSeconds },
+                        .takeIf { seconds },
                     CronPart("Minute", bMin, { bMin = it }, listOf("Every minute" to "*", "At minute 0" to "0", "Every 5 minutes" to "*/5", "Every 15 minutes" to "*/15", "Every 30 minutes" to "*/30", "Minute 15" to "15", "Minute 30" to "30", "Minute 45" to "45")),
                     CronPart("Hour", bHour, { bHour = it }, listOf("Every hour" to "*", "Midnight" to "0", "Noon" to "12", "Every 2 hours" to "*/2", "Every 6 hours" to "*/6", "Every 12 hours" to "*/12", "Working hours" to "9-17")),
                     CronPart("Day of month", bDay, { bDay = it }, listOf("Every day" to "*", "1st of month" to "1", "15th of month" to "15", "Every 2 days" to "*/2")),
                     CronPart("Month", bMonth, { bMonth = it }, listOf("Every month" to "*", "January" to "1", "June" to "6", "December" to "12", "Every 3 months" to "*/3", "Every 6 months" to "*/6")),
-                    CronPart("Day of week", bDayWeek, { bDayWeek = it }, listOf("Every day" to "*", "Monday" to "1", "Friday" to "5", "Monday to Friday" to "1-5", "Weekend" to "6,0"))
+                    // Names, not numbers: Quartz counts weekdays from 1 = Sunday, Unix from 0.
+                    CronPart("Day of week", bDayWeek, { bDayWeek = it }, listOf("Every day" to "*", "Monday" to "MON", "Friday" to "FRI", "Monday to Friday" to "MON-FRI", "Weekend" to "SAT,SUN"))
                 )
                 parts.chunked(2).forEachIndexed { i, pair ->
                     if (i > 0) Spacer(Modifier.height(8.dp))
@@ -130,12 +126,14 @@ class CronTool : Tool {
             }
             Spacer(Modifier.height(16.dp))
 
-            FilterChip(
-                selected = includeSeconds,
-                onClick = { includeSeconds = !includeSeconds },
-                label = { Text("Seconds field") },
-                leadingIcon = if (includeSeconds) { { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) } } else null
-            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SelectField("Dialect", dialect, CronDialect.entries, { dialect = it }, Modifier.weight(1f)) { it.label }
+                OutlinedButton(onClick = { picking = true }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Public, contentDescription = "Time zone", modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(cityName(zone), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
             Spacer(Modifier.height(8.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 CronOutputFormat.entries.forEachIndexed { i, f ->
@@ -155,17 +153,57 @@ class CronTool : Tool {
             }
             when {
                 activeCron.isEmpty() -> OutputPanel("", label = "Meaning", isCopyable = false)
+                activeCron.equals("@reboot", ignoreCase = true) -> OutputPanel("Once, when the machine starts. There are no scheduled runs.", label = "Meaning")
                 parsed == null -> Text(
-                    if (includeSeconds) "Not a valid cron expression. Use 6 fields (second minute hour day month weekday), like 0 */5 * * * *, or turn off Seconds field."
-                    else "Not a valid cron expression. Use 5 fields (minute hour day month weekday), like */5 * * * *, or turn on Seconds field.",
+                    "Not a valid ${dialect.label} cron expression. Use ${dialect.hint}, or pick another dialect.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
                 else -> {
                     OutputPanel(parsed.second, label = "Meaning")
                     Spacer(Modifier.height(8.dp))
-                    RunsPanel(runs, nextExecutionsCount) { nextExecutionsCount = it }
+                    CopyAsButton(dialect, activeCron, zone)
+                    Spacer(Modifier.height(8.dp))
+                    val (next, previous) = runs
+                    val first = next.firstOrNull()?.let { " · first " + relativeTime(it.toInstant(), now.toInstant()) }.orEmpty()
+                    RunsPanel("Next runs$first", next.map { it.format(outputFormat.formatter) }, "No upcoming runs", nextExecutionsCount) { nextExecutionsCount = it }
+                    Spacer(Modifier.height(8.dp))
+                    RunsPanel("Previous runs", previous.map { it.format(outputFormat.formatter) }, "No earlier runs", null, null)
                 }
+            }
+        }
+
+        if (picking) ZonePickerDialog(zone, onPick = { zoneId = it.id; picking = false }, onDismiss = { picking = false })
+    }
+}
+
+/** "Copy as" menu; targets the schedule can't be converted to stay disabled with the reason. */
+@Composable
+private fun CopyAsButton(dialect: CronDialect, expr: String, zone: ZoneId) {
+    val clipboard = LocalClipboardManager.current
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { menu = true }) {
+            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+            Text("Copy as")
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            CronTarget.entries.forEach { target ->
+                val snippet = remember(target, dialect, expr, zone) { runCatching { cronSnippet(target, dialect, expr, zone) } }
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(target.label)
+                            snippet.exceptionOrNull()?.let {
+                                Text(it.message ?: "Not convertible.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
+                    enabled = snippet.isSuccess,
+                    onClick = { clipboard.setText(AnnotatedString(snippet.getOrThrow())); menu = false }
+                )
             }
         }
     }
@@ -201,17 +239,24 @@ private fun CronPartField(part: CronPart, modifier: Modifier) {
     }
 }
 
-/** Slab of upcoming runs with the run count picker in its header. */
+/** Slab of runs; the run count picker sits in the header when [onCount] is set. */
 @Composable
-private fun RunsPanel(runs: List<String>, count: Int, onCount: (Int) -> Unit) {
+private fun RunsPanel(title: String, runs: List<String>, empty: String, count: Int?, onCount: ((Int) -> Unit)?) {
     val clipboard = LocalClipboardManager.current
     var menu by remember { mutableStateOf(false) }
     val text = runs.joinToString("\n")
     Surface(Modifier.fillMaxWidth(), color = LocalSlabColor.current, shape = MaterialTheme.shapes.medium) {
         Column {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Next runs", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                Box {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (count != null && onCount != null) Box {
                     TextButton(onClick = { menu = true }) {
                         Text("Show $count")
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null)
@@ -223,12 +268,12 @@ private fun RunsPanel(runs: List<String>, count: Int, onCount: (Int) -> Unit) {
                     }
                 }
                 IconButton(onClick = { clipboard.setText(AnnotatedString(text)) }, enabled = runs.isNotEmpty()) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy next runs", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy ${title.substringBefore(" ·").lowercase()}", modifier = Modifier.size(20.dp))
                 }
             }
             SelectionContainer {
                 Text(
-                    text.ifEmpty { "No upcoming runs" },
+                    text.ifEmpty { empty },
                     style = CodeTextStyle,
                     color = if (runs.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)

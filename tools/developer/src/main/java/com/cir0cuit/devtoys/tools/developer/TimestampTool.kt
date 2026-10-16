@@ -1,6 +1,8 @@
 package com.cir0cuit.devtoys.tools.developer
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,6 +38,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.time.temporal.IsoFields
 import java.util.Locale
 import kotlin.math.abs
@@ -107,7 +110,7 @@ internal fun cityName(zone: ZoneId) = zone.id.substringAfterLast('/').replace('_
 private fun offsetText(zone: ZoneId, at: Instant) = "UTC" + zone.rules.getOffset(at).id.let { if (it == "Z") "+00:00" else it }
 
 /** Labeled results for one instant; the offset comes from the zone rules at that instant, so DST is right. */
-internal fun timestampRows(t: Instant, zone: ZoneId, now: Instant): List<Pair<String, String>> {
+internal fun timestampRows(t: Instant, zone: ZoneId, now: Instant, allEpochs: Boolean = false): List<Pair<String, String>> {
     val z = t.atZone(zone)
     val ms = if (t.nano == 0) "" else ".SSS"
     fun safe(f: () -> String) = runCatching(f).getOrDefault("Out of range")
@@ -123,30 +126,72 @@ internal fun timestampRows(t: Instant, zone: ZoneId, now: Instant): List<Pair<St
             val day = z.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
             String.format(Locale.ROOT, "%s, %d-W%02d", day, z.get(IsoFields.WEEK_BASED_YEAR), z.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR))
         }
-    )
+    ) + if (!allEpochs) emptyList() else Epoch.entries.filter { it != Epoch.UNIX_S && it != Epoch.UNIX_MS }.map { it.label to safe { toEpoch(it, t, zone) } }
 }
+
+/** Reads one line in the chosen epoch, or by auto-detection when [epoch] is null. */
+internal fun parseAs(text: String, epoch: Epoch?, zone: ZoneId): ParsedTime? =
+    if (epoch == null) parseTimestamp(text, zone) else fromEpoch(epoch, text, zone)?.let { ParsedTime(epoch.label, it) }
+
+private val QUICK_DURATIONS = listOf("+1h" to "PT1H", "+1d" to "P1D", "+7d" to "P7D", "+30d" to "P30D", "-1d" to "-P1D")
 
 class TimestampTool : Tool {
     override val descriptor = ToolDescriptor(
         id = "timestamp",
         title = "Timestamp Converter",
-        description = "Turn Unix timestamps into readable dates",
+        description = "Convert timestamps and calculate dates",
         icon = Icons.Default.Schedule,
         category = ToolCategory.CONVERTERS,
-        keywords = listOf("time", "stamp", "date", "unix", "epoch", "iso", "zone")
+        keywords = listOf("time", "stamp", "date", "unix", "epoch", "iso", "zone", "excel", "filetime", "ldap", "webkit", "cocoa", "gps", "duration", "difference", "calculator")
     )
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
+        var mode by rememberSaveable { mutableStateOf(0) }
         var input by rememberSaveable { mutableStateOf((System.currentTimeMillis() / 1000).toString()) }
+        var epoch by rememberSaveable { mutableStateOf<Epoch?>(null) }
+        var dateA by rememberSaveable { mutableStateOf("") }
+        var dateB by rememberSaveable { mutableStateOf("") }
+        var subtract by rememberSaveable { mutableStateOf(true) }
+        var durationText by rememberSaveable { mutableStateOf("P1D") }
         var zoneId by rememberSaveable { mutableStateOf(ZoneId.systemDefault().id) }
         var picking by rememberSaveable { mutableStateOf(false) }
         val zone = remember(zoneId) { runCatching { ZoneId.of(zoneId) }.getOrDefault(ZoneId.systemDefault()) }
         val now by produceState(Instant.now()) { while (true) { delay(1000); value = Instant.now() } }
         val lines = remember(input) { input.lines().map { it.trim() }.filter { it.isNotEmpty() } }
-        val parsed = remember(lines, zone) { lines.take(MAX_BLOCKS).map { it to parseTimestamp(it, zone) } }
+        val parsed = remember(lines, zone, epoch) { lines.take(MAX_BLOCKS).map { it to parseAs(it, epoch, zone) } }
 
         ToolScaffold(descriptor.title, modifier = modifier) {
-            MonoTextField(input, { input = it }, "Timestamps or dates, one per line", minLines = 2, maxLines = 6)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("Convert", "Calculate").forEachIndexed { i, label ->
+                    SegmentedButton(selected = mode == i, onClick = { mode = i }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            if (mode == 0) {
+                MonoTextField(input, { input = it }, "Timestamps or dates, one per line", minLines = 2, maxLines = 6)
+                Spacer(Modifier.height(8.dp))
+                SelectField("Read input as", epoch, listOf<Epoch?>(null) + Epoch.entries, { epoch = it }, Modifier.fillMaxWidth()) { it?.label ?: "Auto-detect" }
+            } else {
+                MonoTextField(dateA, { dateA = it }, "Date A", minLines = 1, maxLines = 2)
+                Spacer(Modifier.height(8.dp))
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf("A - B", "A + duration").forEachIndexed { i, label ->
+                        SegmentedButton(selected = subtract == (i == 0), onClick = { subtract = i == 0 }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label, maxLines = 1) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (subtract) {
+                    MonoTextField(dateB, { dateB = it }, "Date B", minLines = 1, maxLines = 2)
+                } else {
+                    MonoTextField(durationText, { durationText = it }, "Duration, like PT90M or -P1DT2H", minLines = 1, maxLines = 1)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        QUICK_DURATIONS.forEach { (label, iso) ->
+                            FilterChip(selected = durationText == iso, onClick = { durationText = iso }, label = { Text(label) })
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { picking = true }, modifier = Modifier.weight(1f)) {
@@ -154,34 +199,64 @@ class TimestampTool : Tool {
                     Spacer(Modifier.width(ButtonDefaults.IconSpacing))
                     Text(cityName(zone), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                FilledTonalButton(onClick = { input = (System.currentTimeMillis() / 1000).toString() }) {
+                FilledTonalButton(onClick = {
+                    if (mode == 0) input = (System.currentTimeMillis() / 1000).toString()
+                    else dateA = ZonedDateTime.now(zone).truncatedTo(ChronoUnit.SECONDS).toOffsetDateTime().toString()
+                }) {
                     Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                     Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    Text("Now")
+                    Text(if (mode == 0) "Now" else "A = now", maxLines = 1)
                 }
             }
             Spacer(Modifier.height(16.dp))
 
-            if (lines.isEmpty()) OutputPanel("", label = "Result", isCopyable = false)
-            parsed.forEachIndexed { i, (line, p) ->
-                if (i > 0) Spacer(Modifier.height(8.dp))
-                when {
-                    p == null -> ResultSlab(line, emptyList(), "Can't read this. Enter a Unix timestamp like 1792186953, or a date like 2026-10-16T21:42:33Z.")
-                    lines.size == 1 -> ResultSlab("Read as ${p.kind}", timestampRows(p.instant, zone, now))
-                    else -> ResultSlab("$line · ${p.kind}", timestampRows(p.instant, zone, now))
+            if (mode == 1) {
+                CalculateResult(dateA, dateB, subtract, durationText, zone, now)
+            } else {
+                if (lines.isEmpty()) OutputPanel("", label = "Result", isCopyable = false)
+                parsed.forEachIndexed { i, (line, p) ->
+                    if (i > 0) Spacer(Modifier.height(8.dp))
+                    when {
+                        p == null -> ResultSlab(line, emptyList(), epoch?.let {
+                            "Can't read this as ${it.label}. Enter a number" + (if (it == Epoch.DOS) " or a 0x hex value." else ".")
+                        } ?: "Can't read this. Enter a Unix timestamp like 1792186953, or a date like 2026-10-16T21:42:33Z.")
+                        lines.size == 1 -> ResultSlab("Read as ${p.kind}", timestampRows(p.instant, zone, now, allEpochs = true))
+                        else -> ResultSlab("$line · ${p.kind}", timestampRows(p.instant, zone, now))
+                    }
                 }
-            }
-            if (lines.size > MAX_BLOCKS) {
-                Text(
-                    "Showing the first $MAX_BLOCKS of ${lines.size} values.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                if (lines.size > MAX_BLOCKS) {
+                    Text(
+                        "Showing the first $MAX_BLOCKS of ${lines.size} values.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
         }
 
         if (picking) ZonePickerDialog(zone, onPick = { zoneId = it.id; picking = false }, onDismiss = { picking = false })
+    }
+}
+
+@Composable
+private fun CalculateResult(dateA: String, dateB: String, subtract: Boolean, durationText: String, zone: ZoneId, now: Instant) {
+    val a = remember(dateA, zone) { parseTimestamp(dateA, zone) }
+    val b = remember(dateB, zone) { parseTimestamp(dateB, zone) }
+    val d = remember(durationText) { parseIsoDuration(durationText) }
+    val dateHint = "Enter a Unix timestamp or a date like 2026-10-16T21:42:33Z."
+    when {
+        dateA.isBlank() -> OutputPanel("", label = "Result", isCopyable = false)
+        a == null -> ResultSlab("Date A", emptyList(), "Can't read date A. $dateHint")
+        subtract && dateB.isBlank() -> OutputPanel("", label = "A - B", isCopyable = false)
+        subtract && b == null -> ResultSlab("Date B", emptyList(), "Can't read date B. $dateHint")
+        subtract -> ResultSlab("A - B", dateDiffRows(a.instant, b!!.instant, zone))
+        d == null -> ResultSlab("Duration", emptyList(), "Can't read this duration. Use ISO 8601, like PT90M, P1DT2H or -P1W.")
+        else -> {
+            val result = runCatching { addIsoDuration(a.instant, zone, d) }.getOrNull()
+            if (result == null) ResultSlab("Result", emptyList(), "The result is out of range. Use a shorter duration.")
+            else ResultSlab("A + ${durationText.trim()}", timestampRows(result, zone, now))
+        }
     }
 }
 
@@ -226,7 +301,7 @@ private fun ResultSlab(header: String, rows: List<Pair<String, String>>, error: 
 }
 
 @Composable
-private fun ZonePickerDialog(current: ZoneId, onPick: (ZoneId) -> Unit, onDismiss: () -> Unit) {
+internal fun ZonePickerDialog(current: ZoneId, onPick: (ZoneId) -> Unit, onDismiss: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val now = remember { Instant.now() }
     val matches = remember(query) { ZONES.filter { it.id.replace('_', ' ').contains(query.trim(), ignoreCase = true) } }

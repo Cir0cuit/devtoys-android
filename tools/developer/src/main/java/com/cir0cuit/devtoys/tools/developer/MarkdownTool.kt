@@ -13,13 +13,31 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DataObject
+import androidx.compose.material.icons.filled.FormatBold
+import androidx.compose.material.icons.filled.FormatItalic
+import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.FormatListNumbered
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.FormatStrikethrough
+import androidx.compose.material.icons.filled.HorizontalRule
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -30,12 +48,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
@@ -83,18 +108,23 @@ class MarkdownTool : Tool {
         description = "Write Markdown and preview it as you type",
         icon = Icons.Default.EditNote,
         category = ToolCategory.TEXT,
-        keywords = listOf("markdown", "preview", "cheatsheet")
+        keywords = listOf("markdown", "preview", "cheatsheet", "html", "pdf")
     )
 
     @Composable override fun Content(modifier: Modifier) {
         var tabIndex by rememberSaveable { mutableStateOf(0) }
-        var input by rememberSaveable { mutableStateOf("# Hello World\n\nThis is **Markdown**.") }
+        var field by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+            mutableStateOf(TextFieldValue("# Hello World\n\nThis is **Markdown**."))
+        }
+        val input = field.text
+        var exportMenu by remember { mutableStateOf(false) }
 
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         var openedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
         var showSaveDialog by remember { mutableStateOf(false) }
 
+        val clipboard = LocalClipboardManager.current
         fun toast(message: String) = Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
 
         val openFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -102,7 +132,7 @@ class MarkdownTool : Tool {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) { runCatching { readTextFile(context, uri) } }
                     result.onSuccess { text ->
-                        input = text
+                        field = TextFieldValue(text)
                         openedUri = uri
                         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                         runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
@@ -133,6 +163,19 @@ class MarkdownTool : Tool {
                     toast(if (ok) "Exported PDF" else "Could not export the PDF. Try another location.")
                 }
             }
+        }
+
+        val saveHtml = rememberFileSaver("text/html")
+        fun withHtml(standalone: Boolean, use: (String) -> Unit) {
+            val text = input
+            scope.launch {
+                val html = withContext(Dispatchers.Default) { markdownToHtml(renderFakeFootnotes(text), standalone) }
+                use(html)
+            }
+        }
+        fun edit(change: (TextEdit) -> TextEdit) {
+            val result = change(TextEdit(field.text, field.selection.min, field.selection.max))
+            field = TextFieldValue(result.text, TextRange(result.start, result.end))
         }
 
         if (showSaveDialog) {
@@ -171,9 +214,13 @@ class MarkdownTool : Tool {
                 Tab(selected = tabIndex == 2, onClick = { tabIndex = 2 }, text = { Text("Cheatsheet") })
             }
             Spacer(modifier = Modifier.height(16.dp))
+            if (tabIndex == 0) {
+                FormattingToolbar(::edit)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             Box(modifier = Modifier.weight(1f)) {
                 when (tabIndex) {
-                    0 -> NumberedTextField(input, { input = it }, modifier = Modifier.fillMaxSize())
+                    0 -> MarkdownEditor(field, { field = it }, modifier = Modifier.fillMaxSize())
                     1 -> PreviewMode(input)
                     else -> CheatsheetMode()
                 }
@@ -188,8 +235,105 @@ class MarkdownTool : Tool {
                         if (openedUri != null) showSaveDialog = true else saveMdLauncher.launch("document.md")
                     }
                     Spacer(Modifier.weight(1f))
-                    ActionButton(Icons.Default.PictureAsPdf, "Export PDF") { savePdfLauncher.launch("document.pdf") }
+                    IconButton(onClick = { shareText(context, input) }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share Markdown")
+                    }
+                    Box {
+                        ActionButton(Icons.Default.SaveAlt, "Export") { exportMenu = true }
+                        DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("PDF file") },
+                                leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) },
+                                onClick = { exportMenu = false; savePdfLauncher.launch("document.pdf") }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("HTML file") },
+                                leadingIcon = { Icon(Icons.Default.Code, contentDescription = null) },
+                                onClick = { exportMenu = false; withHtml(standalone = true) { saveHtml("document.html", it.toByteArray()) } }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy as HTML") },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                onClick = {
+                                    exportMenu = false
+                                    withHtml(standalone = false) {
+                                        clipboard.setText(AnnotatedString(it))
+                                        toast("Copied HTML")
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
+            }
+        }
+    }
+
+    /** Scrolling row of Markdown formatting actions applied to the editor selection. */
+    @Composable private fun FormattingToolbar(edit: ((TextEdit) -> TextEdit) -> Unit) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            TextAction("H1", "Heading 1") { edit { toggleLinePrefix(it, "# ") } }
+            TextAction("H2", "Heading 2") { edit { toggleLinePrefix(it, "## ") } }
+            TextAction("H3", "Heading 3") { edit { toggleLinePrefix(it, "### ") } }
+            IconAction(Icons.Default.FormatBold, "Bold") { edit { wrapSelection(it, "**", "**", "bold text") } }
+            IconAction(Icons.Default.FormatItalic, "Italic") { edit { wrapSelection(it, "*", "*", "italic text") } }
+            IconAction(Icons.Default.FormatStrikethrough, "Strikethrough") { edit { wrapSelection(it, "~~", "~~", "text") } }
+            IconAction(Icons.Default.Code, "Inline code") { edit { wrapSelection(it, "`", "`", "code") } }
+            IconAction(Icons.Default.DataObject, "Code block") { edit(::wrapCodeBlock) }
+            IconAction(Icons.Default.Link, "Link") { edit { wrapSelection(it, "[", "](https://)", "link text") } }
+            IconAction(Icons.Default.Image, "Image") { edit { wrapSelection(it, "![", "](image.png)", "alt text") } }
+            IconAction(Icons.Default.FormatListBulleted, "Bulleted list") { edit { toggleLinePrefix(it, "- ") } }
+            IconAction(Icons.Default.FormatListNumbered, "Numbered list") { edit { toggleLinePrefix(it, "1. ") } }
+            IconAction(Icons.Default.CheckBox, "Task list") { edit { toggleLinePrefix(it, "- [ ] ") } }
+            IconAction(Icons.Default.FormatQuote, "Quote") { edit { toggleLinePrefix(it, "> ") } }
+            IconAction(Icons.Default.TableChart, "Table") {
+                edit { insertBlock(it, "| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1 | Cell 2 |") }
+            }
+            IconAction(Icons.Default.HorizontalRule, "Horizontal rule") { edit { insertBlock(it, "\n---") } }
+        }
+    }
+
+    @Composable private fun TextAction(label: String, description: String, onClick: () -> Unit) {
+        TextButton(
+            onClick = onClick,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            modifier = Modifier.semantics { contentDescription = description }
+        ) {
+            Text(label, style = CodeTextStyle, maxLines = 1)
+        }
+    }
+
+    @Composable private fun IconAction(icon: ImageVector, description: String, onClick: () -> Unit) {
+        IconButton(onClick = onClick) { Icon(icon, contentDescription = description) }
+    }
+
+    /** NumberedTextField's look, but with a TextFieldValue so the toolbar can read and set the selection. */
+    @Composable private fun MarkdownEditor(value: TextFieldValue, onValueChange: (TextFieldValue) -> Unit, modifier: Modifier = Modifier) {
+        val style = CodeTextStyle.copy(fontSize = 14.sp, lineHeight = 20.sp)
+        Box(
+            modifier
+                .background(LocalSlabColor.current, MaterialTheme.shapes.medium)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Row(Modifier.padding(8.dp).fillMaxWidth().defaultMinSize(minHeight = 100.dp).height(IntrinsicSize.Min)) {
+                Text(
+                    (1..value.text.count { it == '\n' } + 1).joinToString("\n"),
+                    style = style,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.padding(end = 8.dp, top = 4.dp, bottom = 4.dp)
+                )
+                Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    textStyle = style.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+                        .horizontalScroll(rememberScrollState())
+                )
             }
         }
     }

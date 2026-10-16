@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -36,10 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.ui.MonoTextField
 
-// Shared by ColorPickerTool and ColorPaletteTool.
-
-internal fun rgbToHex(red: Float, green: Float, blue: Float) =
-    "%02X%02X%02X".format(red.toInt(), green.toInt(), blue.toInt())
+// Shared by ColorPickerTool, ColorPaletteTool and ContrastCheckerTool.
 
 /** Copies text to the clipboard and confirms with "Copied <text>". */
 @Composable
@@ -52,50 +54,57 @@ internal fun rememberCopy(): (String) -> Unit {
     }
 }
 
-/** 48dp swatch of the current color next to a hex field. */
+/**
+ * 48dp swatch of the current color, a field that accepts any color notation (see [parseColor]) and a paste
+ * button. [onColor] gets the parsed ARGB color; the field text is left as typed.
+ */
 @Composable
-internal fun ColorHeader(color: Color, hex: String, onHexChange: (String) -> Unit, onColor: (red: Float, green: Float, blue: Float) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Box(
-            Modifier
-                .padding(top = 8.dp, end = 12.dp) // align with the field box below its floating label
-                .size(48.dp)
-                .background(color, MaterialTheme.shapes.medium)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
-        )
-        HexColorField(hex, onHexChange, onColor, Modifier.weight(1f))
+internal fun ColorHeader(
+    color: Color,
+    text: String,
+    onTextChange: (String) -> Unit,
+    onColor: (Int) -> Unit,
+    label: String = "Color"
+) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    fun accept(value: String) {
+        onTextChange(value)
+        parseColor(value)?.let(onColor)
+    }
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                Modifier
+                    .padding(top = 8.dp, end = 12.dp) // align with the field box below its floating label
+                    .size(48.dp)
+                    .background(color, MaterialTheme.shapes.medium)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
+            )
+            MonoTextField(value = text, onValueChange = ::accept, label = label, modifier = Modifier.weight(1f), minLines = 1, maxLines = 1)
+            IconButton(
+                onClick = {
+                    val pasted = clipboard.getText()?.text?.trim().orEmpty()
+                    if (parseColor(pasted) != null) accept(pasted)
+                    else Toast.makeText(context, "The clipboard has no color. Copy a hex code, rgb(), hsl() or a color name.", Toast.LENGTH_LONG).show()
+                },
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Icon(Icons.Default.ContentPaste, contentDescription = "Paste $label")
+            }
+        }
+        if (text.isNotBlank() && parseColor(text) == null) {
+            Text(
+                "Not a color. Use #RRGGBB, rgb(), hsl(), hwb(), oklch() or a CSS color name.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = 60.dp, top = 4.dp)
+            )
+        }
     }
 }
 
-/** Hex field that accepts #RRGGBB, 0xRRGGBB or RRGGBB and reports the color once six digits are in. */
-@Composable
-internal fun HexColorField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onColor: (red: Float, green: Float, blue: Float) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    MonoTextField(
-        value = value,
-        onValueChange = { newValue ->
-            var s = newValue.trim()
-            if (s.startsWith("#")) s = s.substring(1)
-            else if (s.startsWith("0x", ignoreCase = true)) s = s.substring(2)
-            val clean = s.filter { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }.take(6).uppercase()
-            onValueChange(clean)
-            if (clean.length == 6) {
-                val rgb = clean.toInt(16)
-                onColor(((rgb shr 16) and 0xFF).toFloat(), ((rgb shr 8) and 0xFF).toFloat(), (rgb and 0xFF).toFloat())
-            }
-        },
-        label = "Hex",
-        modifier = modifier,
-        minLines = 1,
-        maxLines = 1
-    )
-}
-
-/** Slim 0-255 slider; the value at the end is editable for precise entry. */
+/** Slim 0-255 slider; the value at the end is editable for precise entry. Also used for alpha. */
 @Composable
 internal fun ColorChannelSlider(label: String, value: Float, onValueChange: (Float) -> Unit) {
     var text by remember(value) { mutableStateOf(value.toInt().toString()) }
