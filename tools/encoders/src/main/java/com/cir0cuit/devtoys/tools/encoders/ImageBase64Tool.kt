@@ -1,6 +1,7 @@
 package com.cir0cuit.devtoys.tools.encoders
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.net.Uri
 import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Upload
@@ -42,6 +45,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -97,7 +101,7 @@ class ImageBase64ViewModel : ViewModel() {
     }
 }
 
-private tailrec fun Context.findActivity(): Activity? = when (this) {
+internal tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
@@ -165,12 +169,6 @@ private fun Base64Preview(label: String, base64: String, actions: @Composable ()
     }
 }
 
-private fun formatBytes(n: Int): String = when {
-    n < 1024 -> "$n B"
-    n < 1024 * 1024 -> "%.1f KB".format(n / 1024.0)
-    else -> "%.1f MB".format(n / (1024.0 * 1024))
-}
-
 class ImageBase64Tool : Tool {
     override val descriptor = ToolDescriptor(
         id = "image-base64",
@@ -197,31 +195,37 @@ class ImageBase64Tool : Tool {
         }
 
         val scope = rememberCoroutineScope()
-        val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-            uri?.let {
-                val resolver = context.applicationContext.contentResolver
-                vm.viewModelScope.launch(Dispatchers.IO) {
-                    try {
-                        val bytes = resolver.openInputStream(it)?.use { s -> s.readBytes() } ?: error("the file could not be opened")
-                        val bounds = decodeBounds(bytes)
-                        val mime = resolver.getType(it)?.takeIf { t -> t.startsWith("image/") } ?: bounds.outMimeType ?: "image/png"
-                        val preview = decodePreviewBitmap(bytes, bounds)
-                        val encoded = encodeBase64(bytes, mime, addPrefix)
-                        withContext(Dispatchers.Main) {
-                            vm.encodeBytes = bytes
-                            vm.encodeMime = mime
-                            vm.encodeBitmap = preview
-                            vm.encodeOutputBase64 = encoded
-                            vm.encodeErrorMessage = if (preview == null) "This file could not be read as an image, so the output encodes its raw bytes." else ""
-                        }
-                    } catch (e: Throwable) {
-                        withContext(Dispatchers.Main) {
-                            vm.encodeErrorMessage = "Could not load the image: ${e.message}. Try another file."
-                        }
+        val loadImage: (Uri) -> Unit = { uri ->
+            val resolver = context.applicationContext.contentResolver
+            vm.viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val bytes = resolver.openInputStream(uri)?.use { s -> s.readBytes() } ?: error("the file could not be opened")
+                    val bounds = decodeBounds(bytes)
+                    val mime = resolver.getType(uri)?.takeIf { t -> t.startsWith("image/") } ?: bounds.outMimeType ?: "image/png"
+                    val preview = decodePreviewBitmap(bytes, bounds)
+                    val encoded = encodeBase64(bytes, mime, addPrefix)
+                    withContext(Dispatchers.Main) {
+                        vm.encodeBytes = bytes
+                        vm.encodeMime = mime
+                        vm.encodeBitmap = preview
+                        vm.encodeOutputBase64 = encoded
+                        vm.encodeErrorMessage = if (preview == null) "This file could not be read as an image, so the output encodes its raw bytes." else ""
+                    }
+                } catch (e: Throwable) {
+                    withContext(Dispatchers.Main) {
+                        vm.encodeErrorMessage = "Could not load the image: ${e.message}. Try another file."
                     }
                 }
             }
         }
+        // System photo picker; falls back to the document picker where it is unavailable.
+        val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? -> uri?.let(loadImage) }
+        // The camera app writes into our FileProvider cache path, so no CAMERA permission is needed.
+        val cameraUri = remember(context) {
+            val file = File(File(context.cacheDir, "images").apply { mkdirs() }, "camera_photo.jpg")
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        }
+        val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved -> if (saved) loadImage(cameraUri) }
 
         // Re-encode if addPrefix changes
         LaunchedEffect(addPrefix) {
@@ -325,7 +329,18 @@ class ImageBase64Tool : Tool {
             Spacer(Modifier.height(16.dp))
 
             if (isEncodeMode) {
-                IconTextButton(Icons.Default.Upload, "Select image", { imagePicker.launch("image/*") }, Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    IconTextButton(Icons.Default.Upload, "Pick image", {
+                        imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }, Modifier.weight(1f))
+                    IconTextButton(Icons.Default.PhotoCamera, "Take photo", {
+                        try {
+                            takePicture.launch(cameraUri)
+                        } catch (e: ActivityNotFoundException) {
+                            Toast.makeText(context, "No camera app is available", Toast.LENGTH_SHORT).show()
+                        }
+                    }, Modifier.weight(1f))
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -346,7 +361,7 @@ class ImageBase64Tool : Tool {
                         Spacer(Modifier.height(8.dp))
                     }
                     Text(
-                        "${vm.encodeMime} · ${formatBytes(encodeBytes.size)}",
+                        "${vm.encodeMime} · ${formatSize(encodeBytes.size)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

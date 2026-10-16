@@ -45,4 +45,51 @@ class Rot13Test {
         val s = "😀 123 !?@[`{"
         assertEquals(s, rotN(s, 13))
     }
+
+    @Test
+    fun rot47KnownVectorAndInvolution() {
+        assertEquals("w6==@", rot47("Hello"))
+        val s = "The Quick Brown Fox! 123 ~"
+        assertEquals(s, rot47(rot47(s)))
+        assertEquals("é ü", rot47("é ü"))
+    }
+
+    @Test
+    fun rot18RotatesLettersAndDigits() {
+        assertEquals("Uryyb 5678901234", rot18("Hello 0123456789"))
+        assertEquals("abc 123", rot18(rot18("abc 123")))
+    }
+
+    @Test
+    fun atbashMirrorsTheAlphabet() {
+        assertEquals("ZYX zyx 1!", atbash("ABC abc 1!"))
+        assertEquals("Svool", atbash("Hello"))
+    }
+
+    @Test
+    fun vigenereClassicVector() {
+        // Standard textbook example: ATTACKATDAWN with key LEMON.
+        assertEquals("LXFOPVEFRNHR", vigenere("ATTACKATDAWN", "LEMON", decrypt = false))
+        assertEquals("ATTACKATDAWN", vigenere("LXFOPVEFRNHR", "lemon", decrypt = true))
+        // Non-letters pass through and do not advance the key.
+        assertEquals("Lxf opv", vigenere("Att ack", "LEMON", decrypt = false))
+        assertEquals(null, vigenere("abc", "123", decrypt = false))
+    }
+
+    @Test
+    fun xorIsItsOwnInverse() {
+        val data = "secret".toByteArray()
+        val key = "k".toByteArray()
+        assertEquals(0x73 xor 0x6b, xorBytes(data, key)[0].toInt())
+        assertEquals("secret", String(xorBytes(xorBytes(data, "key".toByteArray()), "key".toByteArray())))
+    }
+
+    @Test
+    fun allShiftsRanksEnglishFirst() {
+        val cipher = rotN("the quick brown fox jumps over the lazy dog", 3)
+        val ranked = allShifts(cipher)
+        assertEquals(25, ranked.size)
+        assertEquals(23, ranked.first().first)
+        assertEquals("the quick brown fox jumps over the lazy dog", ranked.first().second)
+    }
 }

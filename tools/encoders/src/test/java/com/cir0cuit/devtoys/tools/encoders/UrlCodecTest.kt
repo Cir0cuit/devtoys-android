@@ -75,4 +75,54 @@ class UrlCodecTest {
         assertEquals("", urlEncode(""))
         assertEquals("", urlDecode(""))
     }
+
+    @Test
+    fun fullUrlModeKeepsStructure() {
+        assertEquals("https://example.com/a%20b?q=%C3%A9&x=1#top", urlEncode("https://example.com/a b?q=é&x=1#top", UrlMode.FULL))
+        assertEquals("%5B%5D%25", urlEncode("[]%", UrlMode.FULL))
+    }
+
+    @Test
+    fun formModeUsesPlusForSpace() {
+        assertEquals("a+b%26c%3Dd*", urlEncode("a b&c=d*", UrlMode.FORM))
+    }
+
+    @Test
+    fun repeatedDecodeUnwrapsDoubleEncoding() {
+        assertEquals("%20", urlDecode("%2520"))
+        assertEquals(" ", urlDecodeRepeatedly("%2520"))
+        assertEquals("a b", urlDecodeRepeatedly("a%252520b"))
+        assertEquals("100%", urlDecodeRepeatedly("100%25"))
+    }
+
+    @Test
+    fun parsesUrlComponents() {
+        val p = parseUrl("https://user:pw@example.com:8080/p/a%20th?q=a+b&x=%C3%A9&flag#frag")!!
+        assertEquals("https", p.scheme)
+        assertEquals("user:pw", p.userInfo)
+        assertEquals("example.com", p.host)
+        assertEquals("8080", p.port)
+        assertEquals("/p/a%20th", p.path)
+        assertEquals("frag", p.fragment)
+        assertEquals(listOf("q" to "a b", "x" to "é", "flag" to ""), p.params)
+    }
+
+    @Test
+    fun parsesIpv6HostAndDeepLink() {
+        val v6 = parseUrl("http://[::1]:80/")!!
+        assertEquals("[::1]", v6.host)
+        assertEquals("80", v6.port)
+        val deep = parseUrl("myapp:open?id=7")!!
+        assertEquals("myapp", deep.scheme)
+        assertEquals(null, deep.host)
+        assertEquals("open", deep.path)
+        assertEquals(listOf("id" to "7"), deep.params)
+    }
+
+    @Test
+    fun stripsTrackingParameters() {
+        assertEquals("https://x.io/p?id=1#s", stripTracking("https://x.io/p?utm_source=a&id=1&fbclid=z#s"))
+        assertEquals("https://x.io/p", stripTracking("https://x.io/p?utm_medium=b&gclid=c"))
+        assertEquals("https://x.io/p?a=%20", stripTracking("https://x.io/p?a=%20"))
+    }
 }

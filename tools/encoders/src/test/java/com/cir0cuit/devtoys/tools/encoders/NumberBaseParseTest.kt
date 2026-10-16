@@ -69,4 +69,41 @@ class NumberBaseParseTest {
         assertNull(parseBig("1".repeat(4097), 10))
         assertEquals(BigInteger("1".repeat(4096)), parseBig("1".repeat(4096), 10))
     }
+
+    @Test
+    fun toleratesSpacesAndSignedPrefixedInput() {
+        assertEquals(BigInteger.valueOf(0xDEADBEEFL), parseBig("de ad be ef", 16))
+        assertEquals(BigInteger.valueOf(-255), parseBig("-0xff", 16))
+        assertNull(parseBig("--5", 10))
+    }
+
+    @Test
+    fun twosComplementAtFixedWidths() {
+        assertEquals(BigInteger.valueOf(0xFF), toWidth(BigInteger.valueOf(-1), 8))
+        assertEquals(BigInteger.valueOf(0x80), toWidth(BigInteger.valueOf(-128), 8))
+        assertNull(toWidth(BigInteger.valueOf(-129), 8))
+        assertNull(toWidth(BigInteger.valueOf(256), 8))
+        assertEquals(BigInteger.valueOf(-1), signedOf(BigInteger.valueOf(0xFFFFFFFFL), 32))
+        assertEquals(BigInteger.valueOf(Int.MIN_VALUE.toLong()), signedOf(BigInteger.valueOf(0x80000000L), 32))
+        assertEquals(BigInteger.valueOf(127), signedOf(BigInteger.valueOf(127), 8))
+        assertEquals(BigInteger.valueOf(-1), signedOf(toWidth(BigInteger.valueOf(-1), 64)!!, 64))
+    }
+
+    @Test
+    fun formatsWithGroupingPrefixAndPadding() {
+        assertEquals("1_000_000", formatRadix(BigInteger.valueOf(1_000_000), 10, group = true))
+        assertEquals("0xDEAD_BEEF", formatRadix(BigInteger.valueOf(0xDEADBEEFL), 16, group = true, prefix = true))
+        assertEquals("0b1010_1010", formatRadix(BigInteger.valueOf(0xAA), 2, group = true, prefix = true))
+        assertEquals("0o17", formatRadix(BigInteger.valueOf(15), 8, prefix = true))
+        assertEquals("00FF", formatRadix(BigInteger.valueOf(255), 16, padTo = 4))
+        assertEquals("-0x1F", formatRadix(BigInteger.valueOf(-31), 16, prefix = true))
+        assertEquals("zz", formatRadix(BigInteger.valueOf(36 * 36 - 1), 36))
+    }
+
+    @Test
+    fun byteOrderOfAPattern() {
+        assertEquals("12 34 56 78", byteOrder(BigInteger.valueOf(0x12345678), 32, littleEndian = false))
+        assertEquals("78 56 34 12", byteOrder(BigInteger.valueOf(0x12345678), 32, littleEndian = true))
+        assertEquals("00 01", byteOrder(BigInteger.ONE, 16, littleEndian = false))
+    }
 }
