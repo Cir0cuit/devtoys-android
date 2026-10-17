@@ -44,7 +44,8 @@ class TextStatsTool : Tool {
         "text-stats", "Text Statistics", "Count characters, words, lines and bytes",
         Icons.Default.QueryStats, ToolCategory.TEXT,
         listOf("count", "statistics", "analyzer", "length", "words", "characters", "bytes", "graphemes", "lines"),
-        accepts = setOf(ShareKind.TEXT)
+        accepts = setOf(ShareKind.TEXT),
+        fileTypes = setOf("txt", "log", "text")
     )
 
     @Composable override fun Content(modifier: Modifier) {

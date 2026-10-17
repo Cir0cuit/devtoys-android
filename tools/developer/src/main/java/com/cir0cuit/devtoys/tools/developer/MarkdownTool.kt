@@ -113,7 +113,8 @@ class MarkdownTool : Tool {
         icon = Icons.Default.EditNote,
         category = ToolCategory.TEXT,
         keywords = listOf("markdown", "preview", "cheatsheet", "html", "pdf"),
-        accepts = setOf(ShareKind.TEXT)
+        accepts = setOf(ShareKind.TEXT),
+        fileTypes = setOf("md", "markdown", "mdown", "mkd", "mkdn")
     )
 
     @Composable override fun Content(modifier: Modifier) {

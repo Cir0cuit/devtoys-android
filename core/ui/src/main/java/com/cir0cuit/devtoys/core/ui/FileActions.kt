@@ -84,6 +84,13 @@ fun rememberFileSaver(mimeType: String): (fileName: String, content: ByteArray) 
     }
 }
 
+/** Reads a content URI as UTF-8 text, failing with a readable message when it is larger than [maxBytes]. Call off the main thread. */
+fun readTextFile(context: Context, uri: Uri, maxBytes: Int = MAX_TEXT_FILE_BYTES): Result<String> = runCatching {
+    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readNBytesCompat(maxBytes + 1) } ?: error("Could not open the file")
+    require(bytes.size <= maxBytes) { "File is larger than ${maxBytes / 1024} KB" }
+    bytes.toString(Charsets.UTF_8)
+}
+
 /** Opens the share sheet for plain text. */
 fun shareText(context: Context, text: String, subject: String? = null) {
     val send = Intent(Intent.ACTION_SEND).apply {

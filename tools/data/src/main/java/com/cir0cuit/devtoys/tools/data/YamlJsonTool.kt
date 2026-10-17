@@ -45,12 +45,13 @@ internal fun jsonToYaml(input: String, indent: Int, sort: Boolean, split: Boolea
 }
 
 class YamlJsonTool : Tool {
-    override val descriptor = ToolDescriptor("yaml-json", "YAML ↔ JSON", "Convert between YAML and JSON", Icons.Default.SyncAlt, ToolCategory.CONVERTERS, listOf("yaml", "json", "converter"))
+    override val descriptor = ToolDescriptor("yaml-json", "YAML ↔ JSON", "Convert between YAML and JSON", Icons.Default.SyncAlt, ToolCategory.CONVERTERS, listOf("yaml", "json", "converter"), accepts = setOf(ShareKind.TEXT), fileTypes = setOf("yaml", "yml"))
 
     @Composable override fun Content(modifier: Modifier) {
         var yamlInput by rememberCappedText("name: devtoys\ntags:\n  - yaml\n  - json\nstars: 42\n")
         var jsonInput by rememberCappedText("")
         var toYaml by rememberSaveable { mutableStateOf(false) }
+        OnSharedText { yamlInput = it; toYaml = false }
         var jsonIndent by rememberSaveable { mutableStateOf(JsonIndent.TWO) }
         var yamlIndent by rememberSaveable { mutableStateOf(2) }
         var sort by rememberSaveable { mutableStateOf(false) }

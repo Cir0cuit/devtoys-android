@@ -40,10 +40,11 @@ private val XML_INDENT_UNITS = listOf("  ", "    ", null)
 private const val MAX_XPATH_NODES = 200
 
 class XmlFormatterTool : Tool {
-    override val descriptor = ToolDescriptor("xml-formatter", "XML Formatter", "Format, minify and query XML with XPath", Icons.Default.IntegrationInstructions, ToolCategory.FORMATTERS, listOf("xml", "format", "minify", "xpath"))
+    override val descriptor = ToolDescriptor("xml-formatter", "XML Formatter", "Format, minify and query XML with XPath", Icons.Default.IntegrationInstructions, ToolCategory.FORMATTERS, listOf("xml", "format", "minify", "xpath"), accepts = setOf(ShareKind.TEXT), fileTypes = setOf("xml", "xsd", "xsl", "xslt", "svg", "plist"))
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf("<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>") }
+        OnSharedText { input = it }
         var layout by rememberSaveable { mutableStateOf(0) }
         var xpath by rememberSaveable { mutableStateOf("") }
         var output by remember { mutableStateOf("") }

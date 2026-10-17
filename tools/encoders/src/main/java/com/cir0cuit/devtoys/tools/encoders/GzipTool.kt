@@ -1,5 +1,7 @@
 package com.cir0cuit.devtoys.tools.encoders
 
+import com.cir0cuit.devtoys.tools.base.OnSharedFile
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
@@ -135,7 +137,9 @@ class GzipTool : Tool {
         description = "Compress and decompress GZip, Zlib, Deflate",
         icon = Icons.Default.Compress,
         category = ToolCategory.ENCODERS_DECODERS,
-        keywords = listOf("gzip", "zlib", "deflate", "inflate", "compress", "decompress", "gz")
+        keywords = listOf("gzip", "zlib", "deflate", "inflate", "compress", "decompress", "gz"),
+        accepts = setOf(ShareKind.FILE),
+        fileTypes = setOf("gz", "gzip", "tgz", "z")
     )
 
     @Composable
@@ -155,8 +159,7 @@ class GzipTool : Tool {
             onDispose { if (context.findActivity()?.isChangingConfigurations != true) vm.file = null }
         }
 
-        val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            if (uri == null) return@rememberLauncherForActivityResult
+        val loadFile: (Uri) -> Unit = { uri ->
             scope.launch {
                 val loaded = withContext(Dispatchers.IO) {
                     runCatching {
@@ -181,6 +184,8 @@ class GzipTool : Tool {
                     .onFailure { Toast.makeText(context, it.message ?: "Could not open the file", Toast.LENGTH_LONG).show() }
             }
         }
+        val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? -> uri?.let(loadFile) }
+        OnSharedFile { loadFile(it.uri) }
 
         val input = if (decompressMode) decompressInput else compressInput
         val key = listOf(decompressMode, input, file, format, asHex)

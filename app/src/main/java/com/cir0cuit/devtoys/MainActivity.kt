@@ -1,6 +1,9 @@
 package com.cir0cuit.devtoys
 
+import android.content.Context
 import android.content.Intent
+import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import android.net.Uri
 import android.os.Bundle
 import androidx.core.content.IntentCompat
@@ -41,13 +44,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.sharedContent()?.let { shared = it }
+        sharedContent(intent)?.let { shared = it }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) shared = intent.sharedContent()
+        if (savedInstanceState == null) shared = sharedContent(intent)
         
         splashScreen.setKeepOnScreenCondition {
             !settingsRepository.isLoaded.value
@@ -102,10 +105,26 @@ class MainActivity : ComponentActivity() {
 /** Largest shared text accepted; longer text is cut so tool state stays within the saved-state limit. */
 private const val MAX_SHARED_CHARS = 200_000
 
-private fun Intent.sharedContent(): SharedContent? {
-    if (action != Intent.ACTION_SEND) return null
-    if (type?.startsWith("image/") == true) {
-        return IntentCompat.getParcelableExtra(this, Intent.EXTRA_STREAM, Uri::class.java)?.let { SharedContent.Image(it) }
+private fun Context.sharedContent(intent: Intent): SharedContent? {
+    val stream = when (intent.action) {
+        Intent.ACTION_VIEW -> intent.data
+        Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+        else -> return null
     }
-    return getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.take(MAX_SHARED_CHARS)?.let { SharedContent.Text(it) }
+    val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+    // Some apps send plain text both as EXTRA_TEXT and as a file; the text is what the user meant.
+    if (stream != null && !(text != null && intent.type == "text/plain")) {
+        val type = intent.type ?: contentResolver.getType(stream)
+        if (type?.startsWith("image/") == true) return SharedContent.Image(stream)
+        return SharedContent.File(stream, displayName(stream, type))
+    }
+    return text?.take(MAX_SHARED_CHARS)?.let { SharedContent.Text(it) }
 }
+
+/** The file's display name; when the provider has none, a name built from the MIME type so the extension still routes it. */
+private fun Context.displayName(uri: Uri, type: String?): String =
+    runCatching {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
+        ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { '.' in it }
+        ?: "file." + (type?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) } ?: "bin")

@@ -1,5 +1,7 @@
 package com.cir0cuit.devtoys.tools.text
 
+import com.cir0cuit.devtoys.tools.base.OnSharedText
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -88,12 +90,15 @@ class LineToolsTool : Tool {
     override val descriptor = ToolDescriptor(
         "line-tools", "Line Tools", "Sort, filter, dedupe, join or fix lines",
         Icons.AutoMirrored.Filled.Sort, ToolCategory.TEXT,
-        listOf("line", "sort", "dedupe", "count", "grep", "filter", "join", "split", "crlf", "uniq", "shuffle")
+        listOf("line", "sort", "dedupe", "count", "grep", "filter", "join", "split", "crlf", "uniq", "shuffle"),
+        accepts = setOf(ShareKind.TEXT),
+        fileTypes = setOf("txt", "log", "text")
     )
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable(saver = boundedTextSaver) { mutableStateOf("banana\napple\ncherry\napple") }
+        OnSharedText { input = it }
         var operation by rememberSaveable { mutableStateOf("Sort") }
         val op = operation.takeIf { saved -> operations.any { it.first == saved } } ?: "Sort"
         var pattern by rememberSaveable { mutableStateOf("") }

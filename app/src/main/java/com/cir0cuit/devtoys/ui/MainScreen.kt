@@ -1,5 +1,13 @@
 package com.cir0cuit.devtoys.ui
 
+import android.widget.Toast
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import com.cir0cuit.devtoys.core.ui.readTextFile
+import com.cir0cuit.devtoys.tools.base.ShareKind
+import com.cir0cuit.devtoys.tools.base.extension
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
@@ -72,6 +80,9 @@ fun MainScreen(
 
     // Tool the current share was handed to; it keeps seeing the content until it is closed.
     var shareTarget by remember { mutableStateOf<String?>(null) }
+    // What that tool receives: the share itself, or a shared file read as text for tools that only take text.
+    var delivered by remember { mutableStateOf<SharedContent?>(null) }
+    val context = LocalContext.current
 
     val openTool: (Tool) -> Unit = { tool ->
         activeToolId = tool.descriptor.id
@@ -85,6 +96,7 @@ fun MainScreen(
                 activeToolId = null
                 if (shareTarget != null) {
                     shareTarget = null
+                    delivered = null
                     onShareDone()
                 }
             }
@@ -95,7 +107,7 @@ fun MainScreen(
             )
             CompositionLocalProvider(
                 LocalToolChrome provides chrome,
-                LocalSharedContent provides shared?.takeIf { shareTarget == id }
+                LocalSharedContent provides delivered?.takeIf { shareTarget == id }
             ) {
                 saveableStateHolder.SaveableStateProvider(id) {
                     activeTool.Content(modifier = Modifier)
@@ -144,16 +156,35 @@ fun MainScreen(
             }
         }
         if (shared != null && shareTarget == null) {
-            ShareSheet(
-                tools = toolRegistry.getAllTools().filter { shared.kind in it.descriptor.accepts },
-                shared = shared,
-                favorites = favorites,
-                onPick = { tool ->
+            val deliver: (Tool) -> Unit = { tool ->
+                val hand = { content: SharedContent ->
+                    delivered = content
                     shareTarget = tool.descriptor.id
                     openTool(tool)
-                },
-                onDismiss = onShareDone
-            )
+                }
+                if (shared is SharedContent.File && ShareKind.FILE !in tool.descriptor.accepts) {
+                    scope.launch {
+                        withContext(Dispatchers.IO) { readTextFile(context, shared.uri, MAX_SHARED_FILE_BYTES) }
+                            .onSuccess { hand(SharedContent.Text(it)) }
+                            .onFailure {
+                                Toast.makeText(context, "Could not open ${shared.name}: ${it.message}", Toast.LENGTH_LONG).show()
+                                onShareDone()
+                            }
+                    }
+                } else {
+                    hand(shared)
+                }
+            }
+            val candidates = remember(shared) { shareCandidates(toolRegistry.getAllTools(), shared) }
+            when {
+                candidates.isEmpty() -> LaunchedEffect(shared) {
+                    Toast.makeText(context, "No tool can open this", Toast.LENGTH_SHORT).show()
+                    onShareDone()
+                }
+                // A file whose type only one tool handles (for example .md) opens straight in that tool.
+                shared is SharedContent.File && candidates.size == 1 -> LaunchedEffect(shared) { deliver(candidates.single()) }
+                else -> ShareSheet(candidates, shared, favorites, onPick = deliver, onDismiss = onShareDone)
+            }
         }
     }
 }
@@ -163,7 +194,11 @@ fun MainScreen(
 private fun ShareSheet(tools: List<Tool>, shared: SharedContent, favorites: Set<String>, onPick: (Tool) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.background) {
         Text(
-            if (shared is SharedContent.Image) "Open image with" else "Open text with",
+            when (shared) {
+                is SharedContent.Image -> "Open image with"
+                is SharedContent.File -> "Open ${shared.name} with"
+                is SharedContent.Text -> "Open text with"
+            },
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
         )
@@ -173,4 +208,14 @@ private fun ShareSheet(tools: List<Tool>, shared: SharedContent, favorites: Set<
             }
         }
     }
+}
+
+/** Largest file read as text for a text tool; keeps the tool's saved state within the Binder limit. */
+private const val MAX_SHARED_FILE_BYTES = 256 * 1024
+
+/** Tools offered for [shared]: files by extension (falling back to tools that take any file), other content by kind. */
+internal fun shareCandidates(tools: List<Tool>, shared: SharedContent): List<Tool> = when (shared) {
+    is SharedContent.File -> tools.filter { shared.extension in it.descriptor.fileTypes }
+        .ifEmpty { tools.filter { "*" in it.descriptor.fileTypes } }
+    else -> tools.filter { shared.kind in it.descriptor.accepts }
 }

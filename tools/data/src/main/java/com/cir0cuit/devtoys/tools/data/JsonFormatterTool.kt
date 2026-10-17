@@ -47,7 +47,8 @@ class JsonFormatterTool : Tool {
     override val descriptor = ToolDescriptor(
         "json-formatter", "JSON Formatter", "Format, validate and escape JSON", Icons.Default.DataObject,
         ToolCategory.FORMATTERS, listOf("json", "format", "minify", "validate", "escape", "stringify", "tree", "sort"),
-        accepts = setOf(ShareKind.TEXT)
+        accepts = setOf(ShareKind.TEXT),
+        fileTypes = setOf("json", "geojson", "har", "webmanifest")
     )
 
     @Composable override fun Content(modifier: Modifier) {

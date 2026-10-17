@@ -75,10 +75,11 @@ private val csvInputSaver = Saver<MutableState<String>, String>(
 )
 
 class CsvViewerTool : Tool {
-    override val descriptor = ToolDescriptor("csv-viewer", "CSV Viewer & Converter", "View CSV or JSON as a table and convert it", Icons.Default.GridOn, ToolCategory.CONVERTERS, listOf("csv", "tsv", "table", "viewer", "html", "markdown", "json", "sql"))
+    override val descriptor = ToolDescriptor("csv-viewer", "CSV Viewer & Converter", "View CSV or JSON as a table and convert it", Icons.Default.GridOn, ToolCategory.CONVERTERS, listOf("csv", "tsv", "table", "viewer", "html", "markdown", "json", "sql"), accepts = setOf(ShareKind.TEXT), fileTypes = setOf("csv", "tsv"))
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable(saver = csvInputSaver) { mutableStateOf("id,name,age\n1,Alice,30\n2,Bob,25") }
+        OnSharedText { input = it }
         var fileName by rememberSaveable { mutableStateOf<String?>(null) }
         var delimiterChoice by rememberSaveable { mutableStateOf(0) }
         var hasHeader by rememberSaveable { mutableStateOf(true) }

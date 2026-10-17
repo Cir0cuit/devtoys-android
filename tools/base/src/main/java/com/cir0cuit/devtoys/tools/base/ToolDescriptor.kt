@@ -9,5 +9,6 @@ data class ToolDescriptor(
     val icon: ImageVector,
     val category: ToolCategory,
     val keywords: List<String>,      // for search
-    val accepts: Set<ShareKind> = emptySet()  // content this tool can receive from the share sheet
+    val accepts: Set<ShareKind> = emptySet(),  // content this tool can receive from the share sheet
+    val fileTypes: Set<String> = emptySet()    // file extensions it opens; "*" = any file (used only as a fallback)
 )

@@ -1,5 +1,8 @@
 package com.cir0cuit.devtoys.tools.crypto
 
+import com.cir0cuit.devtoys.tools.base.OnSharedFile
+import android.net.Uri
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -194,7 +197,9 @@ class X509DecoderTool : Tool {
         description = "Inspect PEM, DER and PKCS#7 certificates",
         icon = Icons.Default.VerifiedUser,
         category = ToolCategory.CRYPTOGRAPHY,
-        keywords = listOf("x509", "certificate", "pem", "der", "crt", "cer", "p7b", "ssl", "tls", "pin")
+        keywords = listOf("x509", "certificate", "pem", "der", "crt", "cer", "p7b", "ssl", "tls", "pin"),
+        accepts = setOf(ShareKind.FILE),
+        fileTypes = setOf("pem", "crt", "cer", "der", "cert")
     )
 
     @Composable
@@ -219,8 +224,7 @@ class X509DecoderTool : Tool {
             }
         }
 
-        val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri == null) return@rememberLauncherForActivityResult
+        val loadFile: (Uri) -> Unit = { uri ->
             scope.launch {
                 val text = withContext(Dispatchers.IO) {
                     runCatching {
@@ -242,6 +246,8 @@ class X509DecoderTool : Tool {
                     .onFailure { Toast.makeText(context, "Could not read a certificate from this file. Choose a .pem, .crt, .cer or .p7b file.", Toast.LENGTH_LONG).show() }
             }
         }
+        val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? -> uri?.let(loadFile) }
+        OnSharedFile { loadFile(it.uri) }
 
         ToolScaffold(descriptor.title, modifier = modifier) {
             MonoTextField(input, { input = it }, "PEM or Base64 certificate", minLines = 5, maxLines = 10)

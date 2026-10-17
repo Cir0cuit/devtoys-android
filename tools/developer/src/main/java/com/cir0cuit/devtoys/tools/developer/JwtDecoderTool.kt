@@ -29,7 +29,8 @@ class JwtDecoderTool : Tool {
         icon = Icons.Default.VpnKey,
         category = ToolCategory.ENCODERS_DECODERS,
         keywords = listOf("jwt", "decode", "encode", "verify", "sign", "jws", "token", "bearer"),
-        accepts = setOf(ShareKind.TEXT)
+        accepts = setOf(ShareKind.TEXT),
+        fileTypes = setOf("jwt")
     )
 
     @OptIn(ExperimentalMaterial3Api::class)

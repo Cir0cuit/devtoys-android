@@ -17,10 +17,11 @@ private val SQL_LAYOUTS = listOf("2 spaces", "4 spaces", "Minify")
 private val SQL_CASES = listOf("Uppercase" to SqlKeywordCase.UPPER, "Lowercase" to SqlKeywordCase.LOWER, "Keep case" to SqlKeywordCase.KEEP)
 
 class SqlFormatterTool : Tool {
-    override val descriptor = ToolDescriptor("sql-formatter", "SQL Formatter", "Format or minify SQL queries", Icons.Default.Storage, ToolCategory.FORMATTERS, listOf("sql", "format", "minify", "query"))
+    override val descriptor = ToolDescriptor("sql-formatter", "SQL Formatter", "Format or minify SQL queries", Icons.Default.Storage, ToolCategory.FORMATTERS, listOf("sql", "format", "minify", "query"), accepts = setOf(ShareKind.TEXT), fileTypes = setOf("sql"))
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable { mutableStateOf("select id, name from users where active = 1 and age > 18 order by name") }
+        OnSharedText { input = it }
         var layout by rememberSaveable { mutableStateOf(0) }
         var case by rememberSaveable { mutableStateOf(0) }
         var output by remember { mutableStateOf("") }

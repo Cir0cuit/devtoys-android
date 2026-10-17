@@ -1,5 +1,6 @@
 package com.cir0cuit.devtoys.tools.crypto
 
+import com.cir0cuit.devtoys.tools.base.OnSharedFile
 import com.cir0cuit.devtoys.tools.base.OnSharedText
 import com.cir0cuit.devtoys.tools.base.ShareKind
 import android.os.Build
@@ -190,7 +191,8 @@ class HashCalculatorTool : Tool {
         icon = Icons.Default.Lock,
         category = ToolCategory.CRYPTOGRAPHY,
         keywords = listOf("hash", "md5", "sha", "checksum", "file", "crc32", "sha256sum", "verify"),
-        accepts = setOf(ShareKind.TEXT)
+        accepts = setOf(ShareKind.TEXT, ShareKind.FILE),
+        fileTypes = setOf("*")
     )
 
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -207,6 +209,7 @@ class HashCalculatorTool : Tool {
         var fileUris by rememberSaveable { mutableStateOf("") }
         var isFileMode by rememberSaveable { mutableStateOf(false) }
         OnSharedText { textInput = it; isFileMode = false }
+        OnSharedFile { fileUris = it.uri.toString(); isFileMode = true }
         var compareHash by rememberSaveable { mutableStateOf("") }
         var sumsName by rememberSaveable { mutableStateOf<String?>(null) }
         var sumsText by rememberSaveableText()
