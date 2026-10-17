@@ -2,7 +2,6 @@ package com.cir0cuit.devtoys.core.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -28,7 +27,8 @@ fun MonoTextField(
     label: String,
     modifier: Modifier = Modifier,
     minLines: Int = 8,
-    maxLines: Int = Int.MAX_VALUE
+    maxLines: Int = Int.MAX_VALUE,
+    isError: Boolean = false
 ) {
     // The clear button sits in the top corner, not the vertically centred trailing slot,
     // so it stays next to the first line when a long text is pasted.
@@ -37,9 +37,10 @@ fun MonoTextField(
             value = value,
             onValueChange = onValueChange,
             label = { Text(label) },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxWidth(),
             minLines = minLines,
             maxLines = maxLines,
+            isError = isError,
             textStyle = CodeTextStyle,
             shape = MaterialTheme.shapes.medium,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrect = false),

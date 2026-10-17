@@ -1,10 +1,12 @@
 package com.cir0cuit.devtoys.core.ui
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +28,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+private val MinPaneScreenHeight = 520.dp
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -73,13 +77,24 @@ fun ToolScaffold(
         val colModifier = Modifier
             .padding(padding)
             .consumeWindowInsets(padding)
-            .padding(horizontal = 16.dp)
             .fillMaxSize()
             .imePadding()
 
-        Column(
-            modifier = if (scrollable) colModifier.verticalScroll(rememberScrollState()) else colModifier,
-            content = content
-        )
+        if (scrollable) {
+            Column(colModifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp), content = content)
+        } else {
+            // Panes sized with weight() need a bounded height. When the window is shorter than
+            // MinPaneScreenHeight (landscape, keyboard open), keep that height and scroll instead
+            // of squeezing the panes to nothing.
+            BoxWithConstraints(colModifier) {
+                Column(
+                    Modifier
+                        .verticalScroll(rememberScrollState())
+                        .height(maxOf(maxHeight, MinPaneScreenHeight))
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    content = content
+                )
+            }
+        }
     }
 }
