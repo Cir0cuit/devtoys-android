@@ -151,6 +151,29 @@ class BarcodeCodecTest {
     }
 
     @Test
+    fun exportSizeHitsTheTargetExactly() {
+        val qr = exportSize(BarcodeLayout(41, 41, 4, 4, 33, 0), 1024)
+        assertEquals(ExportSize(24, 20, 20, 1024, 1024), qr)
+        val ean = exportSize(BarcodeLayout(115, 58, 10, 4, 38, 12), 1024)
+        assertEquals(ExportSize(8, 52, 52, 1024, 464 + 104), ean)
+        val odd = exportSize(BarcodeLayout(29, 29, 4, 4, 21, 0), 1024)
+        assertEquals(1024, odd.width)
+        assertEquals(1024, odd.height)
+        // Wider than the target at 1 px per module: natural size, no margin.
+        assertEquals(ExportSize(1, 0, 0, 600, 100), exportSize(BarcodeLayout(600, 100, 2, 2, 96, 0), 512))
+    }
+
+    @Test
+    fun rasterizeOffsetsByPadding() {
+        val m = BitMatrix(2, 2).apply { set(0, 0) }
+        val l = barcodeLayout(m, 0, withText = false)
+        val px = rasterize(m, l, 2, black, white, padX = 1, padY = 1, w = 7, h = 7)
+        assertEquals(49, px.size)
+        val dark = px.indices.filter { px[it] == black }.map { it % 7 to it / 7 }
+        assertEquals(listOf(1 to 1, 2 to 1, 1 to 2, 2 to 2), dark)
+    }
+
+    @Test
     fun svgDrawsRunsAndEscapesText() {
         val m = BitMatrix(4, 1).apply { set(0, 0); set(1, 0); set(3, 0) }
         val svg = barcodeSvg(m, barcodeLayout(m, 2, withText = true), "#000000", null, "a<b")

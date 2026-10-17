@@ -14,6 +14,19 @@ class IdCodecsTest {
     private val dns = UUID.fromString(UUID_NAMESPACES.getValue("DNS"))
 
     @Test
+    fun roughCountTellsLargeCountsApart() {
+        // The decimal mark depends on the default locale.
+        fun check(expected: String, bits: Double) {
+            val text = roughCount(idsForOnePercentCollision(bits))
+            assertTrue(text, Regex(expected).matches(text))
+        }
+        check("""1\D3 × 10\^18""", 126.0)
+        check("""2\D6 × 10\^18""", 128.0)
+        check("""4\D8 × 10\^37""", 256.0)
+        check("""4\D9 billion""", 70.0)
+    }
+
+    @Test
     fun nameBasedUuidsMatchKnownVectors() {
         // Python docs: uuid3/uuid5(NAMESPACE_DNS, 'python.org')
         assertEquals("6fa459ea-ee8a-3ca4-894e-db77e160355e", uuidNameBased(dns, "python.org", sha1 = false).toString())

@@ -32,12 +32,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -64,9 +67,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.MonoTextField
 import com.cir0cuit.devtoys.core.ui.OutputPanel
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.core.ui.rememberFileSaver
 import com.cir0cuit.devtoys.tools.base.Tool
@@ -154,7 +160,11 @@ private fun ColumnScope.GeneratePane() {
     var type by rememberSaveable { mutableStateOf(PayloadType.TEXT) }
     var text by rememberSaveable { mutableStateOf(BarcodeKind.QR.sample) }
     OnSharedText { text = it; type = PayloadType.TEXT }
-    var fields by rememberSaveable { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var savedFields by rememberSaveable { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Not saveable on purpose: the Wi-Fi password is not written to saved instance state.
+    var wifiPassword by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+    val fields = if (wifiPassword.isEmpty()) savedFields else savedFields + ("password" to wifiPassword)
     var ec by rememberSaveable { mutableStateOf(EcLevel.M) }
     var dmShape by rememberSaveable { mutableStateOf(DmShape.AUTO) }
     var pdfCompact by rememberSaveable { mutableStateOf(false) }
@@ -195,7 +205,8 @@ private fun ColumnScope.GeneratePane() {
                 val m = encodeBarcode(content, kind, opts)
                 val l = barcodeLayout(m, quiet, withText)
                 val human = if (withText) withCheckDigit(content, kind) else null
-                Generated(m, l, human, renderBarcode(m, l, maxOf(1, PREVIEW_PX / l.cols), fg, bg, human).asImageBitmap())
+                val s = maxOf(1, PREVIEW_PX / l.cols)
+                Generated(m, l, human, renderBarcode(m, l, ExportSize(s, 0, 0, l.cols * s, l.rows * s), fg, bg, human).asImageBitmap())
             }
         }
         generated = result.getOrNull()
@@ -204,12 +215,13 @@ private fun ColumnScope.GeneratePane() {
 
     val savePng = rememberFileSaver("image/png")
     val saveSvg = rememberFileSaver("image/svg+xml")
-    val exportScale = generated?.let { maxOf(1, EXPORT_SIZES[sizeIndex] / it.layout.cols) } ?: 1
+    val export = generated?.let { exportSize(it.layout, EXPORT_SIZES[sizeIndex]) }
     fun exportPng(then: suspend (ByteArray) -> Unit) {
         val g = generated ?: return
+        val size = export ?: return
         scope.launch {
             val bytes = withContext(Dispatchers.Default) {
-                val bmp = renderBarcode(g.matrix, g.layout, exportScale, fg, bg, g.text)
+                val bmp = renderBarcode(g.matrix, g.layout, size, fg, bg, g.text)
                 ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it); bmp.recycle() }.toByteArray()
             }
             then(bytes)
@@ -226,30 +238,50 @@ private fun ColumnScope.GeneratePane() {
         if (kind.is2D) SelectField("Content", type, PayloadType.entries, { type = it }, Modifier.weight(1f)) { it.label }
     }
     Spacer(Modifier.height(12.dp))
+    val security = fields["security"].takeUnless { it.isNullOrEmpty() } ?: "WPA"
     if (usesTemplate) {
         if (type == PayloadType.WIFI) {
-            ChoiceRow(WIFI_SECURITY.map { it.first }, fields["security"].takeUnless { it.isNullOrEmpty() } ?: "WPA", { fields = fields + ("security" to it) }) { key ->
+            ChoiceRow(WIFI_SECURITY.map { it.first }, security, { savedFields = savedFields + ("security" to it) }) { key ->
                 WIFI_SECURITY.first { it.first == key }.second
             }
-            FilterChip(selected = fields["hidden"] == "true", onClick = { fields = fields + ("hidden" to (fields["hidden"] != "true").toString()) }, label = { Text("Hidden network") })
+            FilterChip(selected = fields["hidden"] == "true", onClick = { savedFields = savedFields + ("hidden" to (fields["hidden"] != "true").toString()) }, label = { Text("Hidden network") })
         }
         type.fields.forEach { f ->
             if (type == PayloadType.WIFI && f.key == "password" && fields["security"] == "nopass") return@forEach
             val multiline = f.kind == FieldKind.MULTILINE
+            val secret = f.kind == FieldKind.PASSWORD
             OutlinedTextField(
                 value = fields[f.key].orEmpty(),
-                onValueChange = { fields = fields + (f.key to it.take(1000)) },
+                onValueChange = {
+                    if (secret) { wifiPassword = it.take(1000) } else { savedFields = savedFields + (f.key to it.take(1000)) }
+                },
                 label = { Text(f.label) },
                 placeholder = if (f.placeholder != null) { { Text(f.placeholder) } } else null,
                 singleLine = !multiline,
                 minLines = if (multiline) 2 else 1,
                 maxLines = if (multiline) 5 else 1,
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardFor(f.kind)),
+                visualTransformation = if (secret && !showPassword) PasswordVisualTransformation() else VisualTransformation.None,
+                trailingIcon = if (secret) {
+                    {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(
+                                if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showPassword) "Hide password" else "Show password"
+                            )
+                        }
+                    }
+                } else null,
+                isError = secret && wifiPassword.isNotEmpty() && wifiPasswordError(security, wifiPassword) != null,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
             )
         }
     } else {
-        MonoTextField(text, { text = it.take(MAX_INPUT) }, if (kind.is2D) "Text or link" else "Content", minLines = if (kind.is2D) 2 else 1, maxLines = 6)
+        if (kind.is2D) {
+            MonoTextField(text, { text = it.take(MAX_INPUT) }, "Text or link", minLines = 2, maxLines = 6)
+        } else {
+            SingleLineField(text, { text = it.take(MAX_INPUT) }, "Content", isError = validateBarcodeInput(text, kind) != null)
+        }
         val full = withCheckDigit(text, kind)
         if (full != text && validateBarcodeInput(text, kind) == null) {
             Text("Check digit ${full.last()} is added: $full", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
@@ -261,8 +293,11 @@ private fun ColumnScope.GeneratePane() {
     val g = generated
     val error = payload.exceptionOrNull()?.message ?: encodeError
     val untouched = usesTemplate && type.fields.all { fields[it.key].isNullOrBlank() }
+    // A Wi-Fi password not typed yet is a prompt, not an error.
+    val passwordPending = usesTemplate && type == PayloadType.WIFI && wifiPassword.isEmpty() && error == wifiPasswordError(security, "")
     when {
         error != null && untouched -> Text("Fill in the fields above to create the code.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        error != null && passwordPending -> Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant)
         error != null -> Text(error, color = MaterialTheme.colorScheme.error)
         content.isNullOrEmpty() -> Text("Enter the content to encode.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         g == null -> Unit
@@ -285,7 +320,7 @@ private fun ColumnScope.GeneratePane() {
             val modules = if (m.height == 1) "${m.width} modules wide" else "${m.width} × ${m.height} modules"
             val version = if (kind == BarcodeKind.QR) " · version ${(m.width - 17) / 4}" else ""
             Text(
-                "$modules$version · PNG ${l.cols * exportScale} × ${l.rows * exportScale} px",
+                "$modules$version · PNG ${export?.width} × ${export?.height} px",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
             )

@@ -185,16 +185,29 @@ internal fun barcodeLayout(m: BitMatrix, quiet: Int, withText: Boolean): Barcode
     return BarcodeLayout(m.width + 2 * quiet, bar + 2 * qy + text, quiet, qy, bar, text)
 }
 
-/** ARGB pixels of [m] drawn with [scale] pixels per module. */
-internal fun rasterize(m: BitMatrix, l: BarcodeLayout, scale: Int, fg: Int, bg: Int): IntArray {
-    val w = l.cols * scale
-    val px = IntArray(w * l.rows * scale) { bg }
+/** PNG geometry whose longer side is exactly [target] px: whole pixels per module, the rest added as margin. */
+internal data class ExportSize(val scale: Int, val padX: Int, val padY: Int, val width: Int, val height: Int)
+
+internal fun exportSize(l: BarcodeLayout, target: Int): ExportSize {
+    val long = maxOf(l.cols, l.rows)
+    val scale = maxOf(1, target / long)
+    // A code wider than target at 1 px per module is left at its natural size.
+    val extra = maxOf(0, target - long * scale)
+    return ExportSize(scale, extra / 2, extra / 2, l.cols * scale + extra, l.rows * scale + extra)
+}
+
+/** ARGB pixels of [m] drawn with [scale] pixels per module, offset by [padX] and [padY] in a [w] x [h] image. */
+internal fun rasterize(
+    m: BitMatrix, l: BarcodeLayout, scale: Int, fg: Int, bg: Int,
+    padX: Int = 0, padY: Int = 0, w: Int = l.cols * scale + 2 * padX, h: Int = l.rows * scale + 2 * padY,
+): IntArray {
+    val px = IntArray(w * h) { bg }
     for (y in 0 until l.barRows) {
         val my = if (m.height == 1) 0 else y
         for (x in 0 until m.width) {
             if (!m.get(x, my)) continue
-            val top = (y + l.qy) * scale
-            val left = (x + l.qx) * scale
+            val top = (y + l.qy) * scale + padY
+            val left = (x + l.qx) * scale + padX
             for (dy in 0 until scale) px.fill(fg, (top + dy) * w + left, (top + dy) * w + left + scale)
         }
     }

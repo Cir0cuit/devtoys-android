@@ -1,13 +1,17 @@
 package com.cir0cuit.devtoys.tools.generators
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material3.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
+import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 import kotlinx.coroutines.Dispatchers
@@ -57,14 +61,14 @@ internal fun strengthLabel(bits: Double): String = when {
     else -> "Very strong"
 }
 
-/** Average time to guess a secret of [bits] at 10^10 guesses per second. */
+/** Average time to guess a secret of [bits] at 10^10 guesses per second, as a phrase such as "about 3 days". */
 internal fun crackTime(bits: Double): String {
     val seconds = 2.0.pow(bits - 1) / 1e10
     val units = listOf("seconds" to 1.0, "minutes" to 60.0, "hours" to 3600.0, "days" to 86400.0, "years" to 31_557_600.0)
     return when {
         seconds < 1 -> "less than a second"
         seconds >= 31_557_600.0 * 1e6 -> "more than a million years"
-        else -> units.last { seconds >= it.second }.let { (name, size) -> "%.0f %s".format(seconds / size, name) }
+        else -> units.last { seconds >= it.second }.let { (name, size) -> "about %,.0f %s".format(seconds / size, name) }
     }
 }
 
@@ -76,6 +80,10 @@ internal fun generatePassphrase(words: List<String>, count: Int, separator: Stri
     if (addDigit) rng.nextInt(count).let { i -> picked[i] = picked[i] + rng.nextInt(10) }
     return picked.joinToString(separator)
 }
+
+/** Splits [passphrase] into words that keep their trailing [separator], so a line can only break between words. */
+internal fun passphraseChunks(passphrase: String, separator: String): List<String> =
+    passphrase.split(separator).let { parts -> parts.mapIndexed { i, w -> if (i < parts.lastIndex) w + separator else w } }
 
 internal fun passphraseBits(listSize: Int, count: Int, addDigit: Boolean): Double =
     entropyBits(count, listSize) + if (addDigit) log2(10.0 * count) else 0.0
@@ -136,14 +144,16 @@ class PasswordGeneratorTool : Tool {
         val poolSize = sets.joinToString("").toSet().size
 
         // Not saveable on purpose: the password is not written to saved instance state.
-        val output: String? = remember(mode, length, sets, noRepeat, minEach, wordCount, separator, capitalize, addDigit, pinLength, rejectTrivial, batch, words, nonce) {
+        val items: List<String>? = remember(mode, length, sets, noRepeat, minEach, wordCount, separator, capitalize, addDigit, pinLength, rejectTrivial, batch, words, nonce) {
             val rng = SecureRandom()
             when (mode) {
                 PasswordMode.CHARACTERS -> List(batch) { generatePassword(length, sets, rng, minEach, noRepeat) ?: return@remember null }
                 PasswordMode.PASSPHRASE -> if (words.isEmpty()) return@remember null else List(batch) { generatePassphrase(words, wordCount, separator, capitalize, addDigit, rng) }
                 PasswordMode.PIN -> List(batch) { generatePin(pinLength, rejectTrivial, rng) }
-            }.joinToString("\n")
+            }
         }
+        // Copied one per line; shown with a blank line between items so wrapped ones stay apart.
+        val output = items?.joinToString("\n")
         val bits = when (mode) {
             PasswordMode.CHARACTERS -> entropyBits(length.coerceAtLeast(sets.size * minEach), poolSize)
             PasswordMode.PASSPHRASE -> passphraseBits(words.size, wordCount, addDigit)
@@ -204,15 +214,20 @@ class PasswordGeneratorTool : Tool {
             Spacer(Modifier.height(16.dp))
             when {
                 output != null -> {
-                    OutputPanel(output, isCopyable = false, label = if (batch == 1) mode.output else "$batch × ${mode.output}")
+                    val label = if (batch == 1) mode.output else "$batch × ${mode.output}"
+                    if (mode == PasswordMode.PASSPHRASE) {
+                        PassphrasePanel(items!!, separator, label)
+                    } else {
+                        OutputPanel(items!!.joinToString("\n\n"), isCopyable = false, label = label)
+                    }
                     Spacer(Modifier.height(16.dp))
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${strengthLabel(bits)} · %.0f bits".format(bits), style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.padding(end = 12.dp))
                         LinearProgressIndicator(progress = { (bits / 128).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "About ${crackTime(bits)} to guess at 10 billion guesses per second.",
+                        "${crackTime(bits).replaceFirstChar(Char::uppercase)} to guess at 10 billion guesses per second.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -231,6 +246,29 @@ class PasswordGeneratorTool : Tool {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Like OutputPanel without the copy button, but each word is its own unbreakable piece, so a long
+ * passphrase wraps only after a separator ('.' and '_' are not line-break points for the text engine).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PassphrasePanel(items: List<String>, separator: String, label: String) {
+    Surface(Modifier.fillMaxWidth(), color = LocalSlabColor.current, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+            Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.CenterStart) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items.forEach { item ->
+                        FlowRow { passphraseChunks(item, separator).forEach { Text(it, style = CodeTextStyle, softWrap = false) } }
+                    }
+                }
             }
         }
     }

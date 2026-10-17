@@ -34,6 +34,16 @@ class BarcodePayloadsTest {
     fun wifiValidation() {
         assertEquals("Enter the network name.", error(PayloadType.WIFI, emptyMap()))
         assertEquals("WPA passwords are 8 to 63 characters. This one has 5.", error(PayloadType.WIFI, mapOf("ssid" to "x", "password" to "short")))
+        assertEquals("Enter the Wi-Fi password.", error(PayloadType.WIFI, mapOf("ssid" to "x")))
+        assertEquals("Enter the WEP key.", error(PayloadType.WIFI, mapOf("ssid" to "x", "security" to "WEP")))
+    }
+
+    @Test
+    fun wifiPasswordErrorTreatsEmptyAsPrompt() {
+        assertEquals("Enter the Wi-Fi password.", wifiPasswordError("WPA", ""))
+        assertEquals(null, wifiPasswordError("WPA", "12345678"))
+        assertEquals(null, wifiPasswordError("nopass", ""))
+        assertEquals(null, wifiPasswordError("WEP", "k"))
     }
 
     @Test

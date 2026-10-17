@@ -61,6 +61,14 @@ internal enum class PayloadType(val label: String, val fields: List<PayloadField
 
 internal val WIFI_SECURITY = listOf("WPA" to "WPA/WPA2", "WEP" to "WEP", "nopass" to "None")
 
+/** Null when [password] suits [security]. An empty password needs a key for WPA and WEP but is not an error yet. */
+internal fun wifiPasswordError(security: String, password: String): String? = when {
+    security == "nopass" -> null
+    password.isEmpty() -> if (security == "WEP") "Enter the WEP key." else "Enter the Wi-Fi password."
+    security == "WPA" && password.length !in 8..63 -> "WPA passwords are 8 to 63 characters. This one has ${password.length}."
+    else -> null
+}
+
 private fun escapeWifi(s: String) = s.replace(Regex("""([\\;,:"])"""), """\\$1""")
 
 private fun escapeVcard(s: String) = s.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
@@ -91,8 +99,7 @@ internal fun buildPayload(type: PayloadType, f: Map<String, String>, zone: ZoneI
             val security = f["security"].takeUnless { it.isNullOrEmpty() } ?: "WPA"
             val password = f["password"].orEmpty()
             require(ssid.isNotEmpty()) { "Enter the network name." }
-            if (security == "WPA") require(password.length in 8..63) { "WPA passwords are 8 to 63 characters. This one has ${password.length}." }
-            if (security == "WEP") require(password.isNotEmpty()) { "Enter the WEP key." }
+            wifiPasswordError(security, password)?.let { throw IllegalArgumentException(it) }
             buildString {
                 append("WIFI:T:$security;S:${escapeWifi(ssid)};")
                 if (security != "nopass") append("P:${escapeWifi(password)};")

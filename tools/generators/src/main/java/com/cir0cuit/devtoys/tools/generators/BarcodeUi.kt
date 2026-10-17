@@ -211,11 +211,12 @@ internal fun loadScanPixels(context: Context, uri: Uri): Triple<IntArray, Int, I
     return Triple(pixels, bitmap.width, bitmap.height).also { bitmap.recycle() }
 }
 
-/** Renders [m] with [scale] px per module, plus the human-readable line under 1D codes. */
-internal fun renderBarcode(m: BitMatrix, l: BarcodeLayout, scale: Int, fg: Int, bg: Int, text: String?): Bitmap {
-    val w = l.cols * scale
-    val h = l.rows * scale
-    val bitmap = Bitmap.createBitmap(rasterize(m, l, scale, fg, bg), w, h, Bitmap.Config.ARGB_8888)
+/** Renders [m] at [size], plus the human-readable line under 1D codes. */
+internal fun renderBarcode(m: BitMatrix, l: BarcodeLayout, size: ExportSize, fg: Int, bg: Int, text: String?): Bitmap {
+    val scale = size.scale
+    val w = size.width
+    val h = size.height
+    val bitmap = Bitmap.createBitmap(rasterize(m, l, scale, fg, bg, size.padX, size.padY, w, h), w, h, Bitmap.Config.ARGB_8888)
     if (text != null && l.textRows > 0) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = fg
@@ -228,7 +229,7 @@ internal fun renderBarcode(m: BitMatrix, l: BarcodeLayout, scale: Int, fg: Int, 
         if (measured > maxWidth) paint.textSize *= maxWidth / measured
         // createBitmap(int[]) returns an immutable bitmap.
         val mutable = bitmap.copy(Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
-        Canvas(mutable).drawText(text, w / 2f, (l.qy + l.barRows + 10f) * scale, paint)
+        Canvas(mutable).drawText(text, w / 2f, (l.qy + l.barRows + 10f) * scale + size.padY, paint)
         return mutable
     }
     return bitmap

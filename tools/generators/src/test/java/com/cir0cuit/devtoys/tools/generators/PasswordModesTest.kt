@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.util.Random
+import kotlin.math.log2
 
 class PasswordModesTest {
     private val allSets = listOf(PASSWORD_UPPER, PASSWORD_LOWER, PASSWORD_DIGITS, PASSWORD_SYMBOLS)
@@ -38,6 +39,10 @@ class PasswordModesTest {
         assertEquals("Very strong", strengthLabel(100.0))
         assertEquals("less than a second", crackTime(20.0))
         assertEquals("more than a million years", crackTime(128.0))
+        assertEquals("about 55 seconds", crackTime(40.0))
+        // Thousands are grouped; the separator depends on the default locale.
+        val years = crackTime(1 + log2(1e10 * 31_557_600.0 * 350_270.0))
+        assertTrue(years, Regex("""about 350\D270 years""").matches(years))
     }
 
     @Test
@@ -48,6 +53,14 @@ class PasswordModesTest {
         assertEquals(5, parts.size)
         assertTrue(parts.all { it[0].isUpperCase() })
         assertEquals(1, p.count { it.isDigit() })
+    }
+
+    @Test
+    fun passphraseChunksKeepSeparatorsAndRejoin() {
+        assertEquals(listOf("retiring.", "footpath.", "Cab3"), passphraseChunks("retiring.footpath.Cab3", "."))
+        assertEquals(listOf("a ", "b"), passphraseChunks("a b", " "))
+        val p = generatePassphrase(listOf("alpha", "bravo"), 6, "_", capitalize = false, addDigit = true, rng = Random(5))
+        assertEquals(p, passphraseChunks(p, "_").joinToString(""))
     }
 
     @Test

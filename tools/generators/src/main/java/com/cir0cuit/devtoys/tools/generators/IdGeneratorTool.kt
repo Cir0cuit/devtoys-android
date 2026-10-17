@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.OutputPanel
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -63,7 +64,7 @@ internal fun generateIds(kind: IdKind, count: Int, o: IdOptions, nowMs: Long, rn
 
 /** Human-readable count such as "2.3 billion" for the collision hint. */
 internal fun roughCount(n: Double): String = when {
-    n >= 1e18 -> "more than 10^18"
+    n >= 1e15 -> "%.1e".format(n).split('e').let { (mantissa, exp) -> "$mantissa × 10^${exp.toInt()}" }
     n >= 1e12 -> "%.1f trillion".format(n / 1e12)
     n >= 1e9 -> "%.1f billion".format(n / 1e9)
     n >= 1e6 -> "%.1f million".format(n / 1e6)
@@ -175,7 +176,8 @@ class IdGeneratorTool : Tool {
                 )
                 Spacer(Modifier.height(8.dp))
             }
-            OutputPanel(content = output, isCopyable = kind != IdKind.TOKEN, label = if (count == 1) kind.label else "$count × ${kind.label}")
+            // Long tokens wrap, so a batch gets a blank line between items; Copy still gives one per line.
+            OutputPanel(content = if (kind == IdKind.TOKEN) output.replace("\n", "\n\n") else output, isCopyable = kind != IdKind.TOKEN, label = if (count == 1) kind.label else "$count × ${kind.label}")
         }
     }
 }

@@ -19,7 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.cir0cuit.devtoys.core.ui.OutputPanel
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -121,9 +121,14 @@ class UUIDTool : Tool {
         RegenerateButton("Generate", enabled = !nameBased) { nonce++ }
         Spacer(Modifier.height(16.dp))
         if (nameBased && namespace == null) {
-            Text("The custom namespace is not a valid UUID. Enter 32 hex digits, with or without hyphens.", color = MaterialTheme.colorScheme.error)
+            if (customNamespace.isEmpty()) {
+                Text("Enter the namespace UUID.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("The custom namespace is not a valid UUID. Enter 32 hex digits, with or without hyphens.", color = MaterialTheme.colorScheme.error)
+            }
         } else {
-            OutputPanel(content = output, label = if (raw.size == 1) "UUID" else "${raw.size} UUIDs")
+            // Unwrapped: a quoted JSON item is wider than a phone panel and would break across lines.
+            UnwrappedOutputPanel(content = output, label = if (raw.size == 1) "UUID" else "${raw.size} UUIDs")
         }
     }
 }
@@ -132,10 +137,10 @@ class UUIDTool : Tool {
 @Composable
 internal fun InspectPane(what: String) {
     var input by rememberSaveable { mutableStateOf("") }
-    SingleLineField(input.take(200), { input = it.take(200) }, what)
+    val result = if (input.isNotBlank()) runCatching { inspectId(input) } else null
+    SingleLineField(input.take(200), { input = it.take(200) }, what, isError = result?.isFailure == true)
     Spacer(Modifier.height(16.dp))
-    if (input.isNotBlank()) {
-        val result = runCatching { inspectId(input) }
+    if (result != null) {
         result.onSuccess { LabeledValueSlab(it) }
         result.onFailure { Text(it.message ?: "Not a recognized ID.", color = MaterialTheme.colorScheme.error) }
     }
