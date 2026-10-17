@@ -66,11 +66,19 @@ class ContrastCheckerTool : Tool {
             ColorHeader(Color(bg), bgText, { bgText = it }, { bg = it }, label = "Background")
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { suggest(4.5, "4.5:1") }, enabled = ratio < 4.5, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { suggest(4.5, "4.5:1") }, enabled = ratio < 4.5, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Text("Fix for AA", maxLines = 1)
                 }
-                OutlinedButton(onClick = { suggest(7.0, "7:1") }, enabled = ratio < 7.0, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { suggest(7.0, "7:1") }, enabled = ratio < 7.0, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Text("Fix for AAA", maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = { softenForeground(fg, bg, COMFORT_MAX_CONTRAST).let { fg = it; fgText = formatHex(it) } },
+                    enabled = ratio > COMFORT_MAX_CONTRAST,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    Text("Soften", maxLines = 1)
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -109,6 +117,22 @@ class ContrastCheckerTool : Tool {
                                 color = if (pass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                             )
                         }
+                    }
+                    val comfortable = ratio <= COMFORT_MAX_CONTRAST
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Comfortable reading", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (comfortable) "${num(COMFORT_MAX_CONTRAST, 0)}:1 or less" else "Very high contrast glares; tap Soften",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            if (comfortable) "Pass" else "Too high",
+                            style = CodeTextStyle,
+                            fontWeight = FontWeight.Bold,
+                            color = if (comfortable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }

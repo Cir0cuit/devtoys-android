@@ -390,6 +390,25 @@ internal fun suggestForeground(fg: Int, bg: Int, target: Double): Int? {
     }.minByOrNull { abs(it - l) }?.let(::at)
 }
 
+/** Above this ratio text starts to glare (halation), which tires readers with astigmatism or dyslexia. */
+internal const val COMFORT_MAX_CONTRAST = 15.0
+
+/** The text color closest to [fg] in OKLCH lightness, moved toward [bg], whose contrast is at most [max]. */
+internal fun softenForeground(fg: Int, bg: Int, max: Double): Int {
+    if (contrastRatio(fg, bg) <= max) return fg
+    val (l, c, h) = toOklch(fg).toList()
+    val alpha = alphaOf(fg)
+    val goal = max - 0.02 // margin for 8-bit rounding
+    fun at(lightness: Double) = oklchToArgb(lightness, c, h, alpha)
+    var tooHigh = l
+    var ok = toOklch(compositeOver(bg, 0xFFFFFFFF.toInt()))[0]
+    repeat(30) {
+        val mid = (tooHigh + ok) / 2
+        if (contrastRatio(at(mid), bg) <= goal) ok = mid else tooHigh = mid
+    }
+    return at(ok)
+}
+
 internal enum class ColorVision(val label: String, private val m: DoubleArray) {
     PROTANOPIA("Protanopia", doubleArrayOf(0.152286, 1.052583, -0.204868, 0.114503, 0.786281, 0.099216, -0.003882, -0.048116, 1.051998)),
     DEUTERANOPIA("Deuteranopia", doubleArrayOf(0.367322, 0.860646, -0.227968, 0.280085, 0.672501, 0.047413, -0.011820, 0.042940, 0.968881)),

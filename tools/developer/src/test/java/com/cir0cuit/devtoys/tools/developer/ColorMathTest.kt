@@ -76,6 +76,14 @@ class ColorMathTest {
         assertNull(suggestForeground(0xFF777777.toInt(), 0xFF777777.toInt(), 21.0))
     }
 
+    @Test fun softenCapsContrast() {
+        val white = 0xFFFFFFFF.toInt()
+        val softened = softenForeground(0xFF000000.toInt(), white, COMFORT_MAX_CONTRAST)
+        assertTrue(contrastRatio(softened, white) <= COMFORT_MAX_CONTRAST)
+        assertTrue(contrastRatio(softened, white) > 14.0) // closest comfortable shade, not grey mush
+        assertEquals(0xFF777777.toInt(), softenForeground(0xFF777777.toInt(), white, COMFORT_MAX_CONTRAST))
+    }
+
     @Test fun scaleKeepsBaseAndGetsDarker() {
         val base = 0xFF3498DB.toInt()
         val scale = tintScale(base)
