@@ -147,6 +147,12 @@ A developer, IT admin or tinkerer often needs to decode a JWT, check a subnet, f
 
 Download `DevToys-<version>.apk` from the [latest release](https://github.com/Cir0cuit/devtoys-android/releases/latest) and open it on your device. You may need to allow installs from your browser or file manager. Requires Android 8.0 (API 26) or newer. Each release lists the APK's SHA-256 checksum in `SHA256SUMS.txt`.
 
+Releases are signed with the certificate below. `apksigner verify --print-certs DevToys-<version>.apk` prints it as the `certificate SHA-256 digest`:
+
+```
+c9680cf469fc025144b51139198f5b1109e1cbbcc497b0d9da56ad9f757e000b
+```
+
 Updates are published as new releases. Installing a newer APK over the old one keeps your favorites and settings.
 
 DevToys is no longer published on Google Play.
