@@ -62,4 +62,14 @@ class TextEncryptionTest {
     fun rejectsShortKey() {
         parseRawAesKey("0011")
     }
+
+    @Test
+    fun nonBase64InputIsReportedAsSuch() {
+        try {
+            decryptText("meet at noon", true, true, "pw", 1000)
+            fail()
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("not valid Base64"))
+        }
+    }
 }

@@ -57,6 +57,16 @@ class OtpTest {
     }
 
     @Test
+    fun secretOfTypedUriDependsOnlyOnTheWholeField() {
+        val uri = "otpauth://hotp/ACME:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&counter=0"
+        // Every prefix a user passes through while typing must not throw.
+        for (n in 1..uri.length) otpSecretOf(uri.take(n))
+        assertEquals("", otpSecretOf("otpauth://hotp/ACME:alice?secret="))
+        assertEquals("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", otpSecretOf(uri))
+        assertEquals("jbswy3dp", otpSecretOf("jbswy3dp"))
+    }
+
+    @Test
     fun parsesOtpAuthUri() {
         val p = parseOtpAuthUri("otpauth://totp/ACME%20Co:john.doe@email.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=ACME%20Co&algorithm=SHA256&digits=8&period=60")
         assertEquals(OtpParams("totp", "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ", "ACME Co", "john.doe@email.com", "SHA256", 8, 60, 0), p)

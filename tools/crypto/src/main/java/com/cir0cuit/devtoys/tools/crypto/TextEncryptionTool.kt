@@ -101,7 +101,10 @@ internal fun encryptText(plain: String, gcm: Boolean, usePassword: Boolean, secr
 /** Reverses [encryptText]; the input may contain line breaks. */
 internal fun decryptText(blob: String, gcm: Boolean, usePassword: Boolean, secret: String, iterations: Int): String {
     val data = try {
-        Base64.getDecoder().decode(blob.filterNot { it.isWhitespace() })
+        // Encrypted output is always padded, so a length that is not a multiple of 4 is not ours.
+        val cleaned = blob.filterNot { it.isWhitespace() }
+        require(cleaned.length % 4 == 0)
+        Base64.getDecoder().decode(cleaned)
     } catch (e: IllegalArgumentException) {
         throw IllegalArgumentException("The input is not valid Base64. Paste the whole encrypted text.")
     }
@@ -170,7 +173,8 @@ class TextEncryptionTool : Tool {
         ToolScaffold(descriptor.title, modifier = modifier) {
             Segmented(listOf("Encrypt", "Decrypt"), if (decrypt) 1 else 0, { decrypt = it == 1 })
             Spacer(Modifier.height(16.dp))
-            MonoTextField(input, { input = it }, if (decrypt) "Encrypted text (Base64)" else "Plain text", minLines = 4)
+            MonoTextField(input, { input = it }, if (decrypt) "Encrypted text (Base64)" else "Plain text", minLines = 4,
+                isError = output?.exceptionOrNull() is IllegalArgumentException)
             Spacer(Modifier.height(8.dp))
             SecretField(
                 secret, { secret = it },

@@ -145,6 +145,12 @@ internal fun parseOtpAuthUri(text: String): OtpParams {
     return OtpParams(type, secret, query["issuer"] ?: labelIssuer, account, algorithm, digits, period, counter)
 }
 
+internal fun isOtpAuthUri(text: String) = text.trim().startsWith("otpauth://", ignoreCase = true)
+
+/** The Base32 secret in the secret field: the field itself, or the secret of an otpauth URI ("" until it parses). */
+internal fun otpSecretOf(field: String): String =
+    if (isOtpAuthUri(field)) runCatching { parseOtpAuthUri(field).secret }.getOrDefault("") else field
+
 internal fun buildOtpAuthUri(p: OtpParams): String {
     fun enc(s: String) = URLEncoder.encode(s.trim(), "UTF-8").replace("+", "%20")
     val label = if (p.issuer.isBlank()) enc(p.account) else "${enc(p.issuer)}:${enc(p.account)}"
@@ -190,7 +196,8 @@ class OtpTool : Tool {
             }
         }
 
-        val key = remember(secret) { runCatching { base32Decode(secret) } }
+        val base32 = remember(secret) { otpSecretOf(secret) }
+        val key = remember(base32) { runCatching { base32Decode(base32) } }
         val period = periodText.toIntOrNull()?.takeIf { it in 1..86_400 }
         val counter = counterText.toLongOrNull()?.takeIf { it >= 0 }
         val keyBytes = key.getOrNull()?.takeIf { it.isNotEmpty() }
@@ -199,17 +206,20 @@ class OtpTool : Tool {
         ToolScaffold(descriptor.title, modifier = modifier) {
             SecretField(
                 value = secret,
+                // The field keeps what the user typed; rewriting it to the bare secret as soon as a
+                // partial URI parsed made the following keystrokes land in the secret.
                 onValueChange = { text ->
+                    secret = text
                     importError = null
-                    if (text.trim().startsWith("otpauth://", ignoreCase = true)) {
+                    if (isOtpAuthUri(text)) {
                         runCatching { parseOtpAuthUri(text) }
                             .onSuccess { p ->
-                                secret = p.secret; issuer = p.issuer; account = p.account
+                                issuer = p.issuer; account = p.account
                                 isHotp = p.type == "hotp"; algorithm = p.algorithm; digits = p.digits
                                 periodText = p.period.toString(); counterText = p.counter.toString()
                             }
-                            .onFailure { secret = text; importError = it.message }
-                    } else secret = text
+                            .onFailure { importError = it.message }
+                    }
                 },
                 label = "Secret (Base32) or otpauth URI",
                 isError = importError != null || key.isFailure,
@@ -267,7 +277,7 @@ class OtpTool : Tool {
                     Spacer(Modifier.height(8.dp))
                 }
                 val uri = buildOtpAuthUri(
-                    OtpParams(if (isHotp) "hotp" else "totp", secret, issuer, account, algorithm, digits, period ?: 30, counter ?: 0L)
+                    OtpParams(if (isHotp) "hotp" else "totp", base32, issuer, account, algorithm, digits, period ?: 30, counter ?: 0L)
                 )
                 ResultSlab(
                     if (isHotp) listOf("Code (counter $step)" to code(step), "Next code (counter ${step + 1})" to code(step + 1), "otpauth URI" to uri)

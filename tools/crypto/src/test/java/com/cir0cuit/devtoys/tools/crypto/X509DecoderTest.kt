@@ -3,6 +3,7 @@ package com.cir0cuit.devtoys.tools.crypto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.math.BigInteger
 import java.util.Base64
 
 /** Expected values from `openssl x509 -fingerprint` and `openssl pkey -pubin -outform der | sha256 | base64`. */
@@ -35,7 +36,7 @@ class X509DecoderTest {
         assertEquals("serverAuth, clientAuth", fields["Extended key usage"])
         assertEquals("CA, path length 2", fields["Basic constraints"])
         assertEquals("EC 256 bits", fields["Public key"])
-        assertEquals("6a56942a502c26530ecd61ac28e74445549563ad", fields["Serial number"])
+        assertEquals("6A56942A502C26530ECD61AC28E74445549563AD", fields["Serial number"])
         assertEquals(
             "22:66:A0:FA:61:55:76:9E:60:F8:06:35:A8:FF:10:79:11:1F:C2:7B:B9:61:10:88:38:FE:C9:35:E9:00:0D:12",
             fields["SHA-256 fingerprint"],
@@ -45,6 +46,12 @@ class X509DecoderTest {
         assertEquals(keyId, fields["Subject key identifier"])
         assertEquals(keyId, fields["Authority key identifier"])
         assertTrue(fields["Status"]!!.startsWith("Valid"))
+    }
+
+    @Test
+    fun serialKeepsLeadingZeroLikeOpenssl() {
+        assertEquals("024D1A4B30D6E73EAD77A098CA08337743333673", serialHex(BigInteger("024D1A4B30D6E73EAD77A098CA08337743333673", 16)))
+        assertEquals("01", serialHex(BigInteger.ONE))
     }
 
     @Test
@@ -75,5 +82,11 @@ class X509DecoderTest {
     @Test(expected = Exception::class)
     fun rejectsGarbage() {
         parseCertificates(Base64.getEncoder().encodeToString("not a certificate".toByteArray()))
+    }
+
+    @Test
+    fun fingerprintsWrapOnlyAfterColons() {
+        assertEquals("AB:\u200B0F:\u200B12", wrapAtColons("AB:0F:12"))
+        assertEquals("12:30:45 UTC", wrapAtColons("12:30:45 UTC"))
     }
 }

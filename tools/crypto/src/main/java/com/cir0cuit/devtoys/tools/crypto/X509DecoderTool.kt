@@ -52,6 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.math.BigInteger
 import java.security.MessageDigest
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
@@ -81,6 +82,10 @@ private val EXTENDED_KEY_USAGES = mapOf(
 private val SAN_PREFIXES = mapOf(0 to "other", 1 to "email", 2 to "DNS", 3 to "X400", 4 to "DirName", 5 to "EDI", 6 to "URI", 7 to "IP", 8 to "RID")
 
 private fun colonHex(bytes: ByteArray) = bytes.joinToString(":") { "%02X".format(it) }
+
+/** Uppercase hex padded to whole bytes, as `openssl x509 -serial` prints it. */
+internal fun serialHex(serial: BigInteger): String =
+    serial.toString(16).uppercase().let { if (it.length % 2 == 1) "0$it" else it }
 
 private fun sha(algorithm: String, bytes: ByteArray) = MessageDigest.getInstance(algorithm).digest(bytes)
 
@@ -152,7 +157,7 @@ internal fun X509Certificate.fields(now: Date = Date()): List<Pair<String, Strin
         "Key usage" to keyUsageText,
         "Extended key usage" to extendedKeyUsageText,
         "Basic constraints" to basicConstraintsText,
-        "Serial number" to serialNumber.toString(16),
+        "Serial number" to serialHex(serialNumber),
         "Signature algorithm" to sigAlgName,
         "Version" to version.toString(),
         "SHA-256 fingerprint" to colonHex(sha("SHA-256", encoded)),

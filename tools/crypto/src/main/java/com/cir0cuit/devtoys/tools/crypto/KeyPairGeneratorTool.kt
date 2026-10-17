@@ -6,10 +6,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -25,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.OutputPanel
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.core.ui.rememberFileSaver
 import com.cir0cuit.devtoys.tools.base.Tool
@@ -151,12 +148,10 @@ class KeyPairGeneratorTool : Tool {
         keywords = listOf("rsa", "ec", "ecdsa", "ssh", "pem", "jwk", "public key", "private key", "openssh")
     )
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content(modifier: Modifier) {
         var type by rememberSaveable { mutableStateOf(KeyType.EC_P256) }
         var comment by rememberSaveable { mutableStateOf("") }
-        var expanded by remember { mutableStateOf(false) }
         // Keys stay in memory only; they are not written to saved instance state.
         var result by remember { mutableStateOf<KeyOutput?>(null) }
         var error by remember { mutableStateOf<String?>(null) }
@@ -165,19 +160,16 @@ class KeyPairGeneratorTool : Tool {
         val saveFile = rememberFileSaver("application/x-pem-file")
 
         ToolScaffold(descriptor.title, modifier = modifier) {
-            ExposedDropdownMenuBox(expanded, { expanded = it }) {
-                OutlinedTextField(
-                    type.label, {}, Modifier.menuAnchor().fillMaxWidth(),
-                    readOnly = true, singleLine = true, label = { Text("Key type") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                    shape = MaterialTheme.shapes.medium
-                )
-                ExposedDropdownMenu(expanded, { expanded = false }) {
-                    KeyType.entries.forEach {
-                        DropdownMenuItem(text = { Text(it.label) }, onClick = { type = it; expanded = false })
-                    }
-                }
-            }
+            SelectField(
+                label = "Key type",
+                selected = type,
+                options = KeyType.entries,
+                // A key of the old type would sit under the new type's label.
+                onSelect = { if (it != type) { type = it; result = null; error = null } },
+                enabled = !running,
+                modifier = Modifier.fillMaxWidth(),
+                optionLabel = { it.label }
+            )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 comment, { comment = it }, Modifier.fillMaxWidth(),

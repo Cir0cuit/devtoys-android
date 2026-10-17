@@ -26,6 +26,11 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
 
+private val COLON_HEX = Regex("[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2})+")
+
+/** Colon-separated hex (fingerprints) wraps only after a colon: a zero-width space there gives the line breaker a place to break. */
+internal fun wrapAtColons(value: String): String = if (COLON_HEX.matches(value)) value.replace(":", ":\u200B") else value
+
 /** One recessed slab of label/value rows, each value selectable with its own copy button; [marked] gets a check. */
 @Composable
 internal fun ResultSlab(rows: List<Pair<String, String>>, modifier: Modifier = Modifier, marked: String? = null) {
@@ -47,7 +52,7 @@ internal fun ResultSlab(rows: List<Pair<String, String>>, modifier: Modifier = M
                         }
                         SelectionContainer {
                             Text(
-                                value.ifEmpty { "—" },
+                                wrapAtColons(value).ifEmpty { "—" },
                                 style = CodeTextStyle,
                                 color = if (value.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                             )
