@@ -26,16 +26,6 @@ A developer, IT admin or tinkerer often needs to decode a JWT, check a subnet, f
   <img src="docs/images/screenshots/settings.png" width="19%" alt="Settings" />
 </p>
 
-<p>
-  <img src="docs/images/tools.jpg" width="100%" alt="Tool overview" />
-</p>
-
-<p>
-  <img src="docs/images/themes.jpg" width="32%" alt="Themes and accent colors" />
-  <img src="docs/images/offline.jpg" width="32%" alt="Markdown editor working offline" />
-  <img src="docs/images/share.jpg" width="32%" alt="QR and barcode generator" />
-</p>
-
 ## Tools
 
 ### Converters
