@@ -37,36 +37,22 @@ private fun d(s: String) = BigDecimal(s)
 private fun ratio(a: String, b: String) = d(a).divide(d(b), MathContext.DECIMAL128)
 private fun pow(base: Int, exp: Int) = BigDecimal(base).pow(exp)
 
+private val SI_PREFIXES = listOf("k" to "Kilo", "M" to "Mega", "G" to "Giga", "T" to "Tera", "P" to "Peta", "E" to "Exa")
+private val IEC_PREFIXES = listOf("Ki" to "Kibi", "Mi" to "Mebi", "Gi" to "Gibi", "Ti" to "Tebi", "Pi" to "Pebi", "Ei" to "Exbi")
+
+/** The unit itself, then every decimal (1000ⁿ) and binary (1024ⁿ) multiple of it. */
+private fun withPrefixes(symbol: String, name: String, factor: BigDecimal, suffix: String = "", nameSuffix: String = ""): List<ConvUnit> =
+    listOf(ConvUnit(symbol + suffix, name.replaceFirstChar { it.uppercase() } + nameSuffix, factor)) +
+        listOf(SI_PREFIXES to 1000, IEC_PREFIXES to 1024).flatMap { (prefixes, base) ->
+            prefixes.mapIndexed { i, (p, n) -> ConvUnit(p + symbol + suffix, n + name + nameSuffix, factor * pow(base, i + 1)) }
+        }
+
 internal val QUANTITIES = listOf(
+    Quantity("Data size", withPrefixes("bit", "bits", d("0.125")) + withPrefixes("B", "bytes", BigDecimal.ONE), "MB"),
     Quantity(
-        "Data size", listOf(
-            ConvUnit("bit", "Bits", d("0.125")),
-            ConvUnit("B", "Bytes", BigDecimal.ONE),
-            ConvUnit("kB", "Kilobytes", pow(1000, 1)),
-            ConvUnit("MB", "Megabytes", pow(1000, 2)),
-            ConvUnit("GB", "Gigabytes", pow(1000, 3)),
-            ConvUnit("TB", "Terabytes", pow(1000, 4)),
-            ConvUnit("PB", "Petabytes", pow(1000, 5)),
-            ConvUnit("KiB", "Kibibytes", pow(1024, 1)),
-            ConvUnit("MiB", "Mebibytes", pow(1024, 2)),
-            ConvUnit("GiB", "Gibibytes", pow(1024, 3)),
-            ConvUnit("TiB", "Tebibytes", pow(1024, 4)),
-            ConvUnit("PiB", "Pebibytes", pow(1024, 5))
-        ), "MB"
-    ),
-    Quantity(
-        "Data rate", listOf(
-            ConvUnit("bit/s", "Bits per second", BigDecimal.ONE),
-            ConvUnit("kbit/s", "Kilobits per second", pow(1000, 1)),
-            ConvUnit("Mbit/s", "Megabits per second", pow(1000, 2)),
-            ConvUnit("Gbit/s", "Gigabits per second", pow(1000, 3)),
-            ConvUnit("B/s", "Bytes per second", d("8")),
-            ConvUnit("kB/s", "Kilobytes per second", d("8000")),
-            ConvUnit("MB/s", "Megabytes per second", d("8000000")),
-            ConvUnit("GB/s", "Gigabytes per second", d("8000000000")),
-            ConvUnit("KiB/s", "Kibibytes per second", pow(1024, 1) * d("8")),
-            ConvUnit("MiB/s", "Mebibytes per second", pow(1024, 2) * d("8"))
-        ), "Mbit/s"
+        "Data rate",
+        withPrefixes("bit", "bits", BigDecimal.ONE, "/s", " per second") + withPrefixes("B", "bytes", d("8"), "/s", " per second"),
+        "Mbit/s"
     ),
     Quantity(
         "Time", listOf(
@@ -90,6 +76,8 @@ internal val QUANTITIES = listOf(
     ),
     Quantity(
         "Length", listOf(
+            ConvUnit("nm", "Nanometers", d("1e-9")),
+            ConvUnit("µm", "Micrometers", d("1e-6")),
             ConvUnit("mm", "Millimeters", d("0.001")),
             ConvUnit("cm", "Centimeters", d("0.01")),
             ConvUnit("m", "Meters", BigDecimal.ONE),
@@ -120,6 +108,52 @@ internal val QUANTITIES = listOf(
             ConvUnit("kn", "Knots", ratio("1852", "3600")),
             ConvUnit("ft/s", "Feet per second", d("0.3048"))
         ), "km/h"
+    ),
+    Quantity(
+        "Volume", listOf(
+            ConvUnit("mL", "Milliliters", d("0.001")),
+            ConvUnit("L", "Liters", BigDecimal.ONE),
+            ConvUnit("m³", "Cubic meters", d("1000")),
+            ConvUnit("tsp", "Teaspoons (US)", d("0.00492892159375")),
+            ConvUnit("tbsp", "Tablespoons (US)", d("0.01478676478125")),
+            ConvUnit("fl oz", "Fluid ounces (US)", d("0.0295735295625")),
+            ConvUnit("cup", "Cups (US)", d("0.2365882365")),
+            ConvUnit("gal", "Gallons (US)", d("3.785411784")),
+            ConvUnit("imp gal", "Gallons (imperial)", d("4.54609"))
+        ), "L"
+    ),
+    Quantity(
+        "Area", listOf(
+            ConvUnit("mm²", "Square millimeters", d("1e-6")),
+            ConvUnit("cm²", "Square centimeters", d("1e-4")),
+            ConvUnit("m²", "Square meters", BigDecimal.ONE),
+            ConvUnit("ha", "Hectares", d("10000")),
+            ConvUnit("km²", "Square kilometers", d("1e6")),
+            ConvUnit("ft²", "Square feet", d("0.09290304")),
+            ConvUnit("ac", "Acres", d("4046.8564224")),
+            ConvUnit("mi²", "Square miles", d("2589988.110336"))
+        ), "m²"
+    ),
+    Quantity(
+        "Pressure", listOf(
+            ConvUnit("Pa", "Pascals", BigDecimal.ONE),
+            ConvUnit("kPa", "Kilopascals", d("1000")),
+            ConvUnit("bar", "Bars", d("100000")),
+            ConvUnit("atm", "Atmospheres", d("101325")),
+            ConvUnit("psi", "Pounds per square inch", d("6894.757293168")),
+            ConvUnit("mmHg", "Millimeters of mercury", d("133.322387415"))
+        ), "bar"
+    ),
+    Quantity(
+        "Energy", listOf(
+            ConvUnit("J", "Joules", BigDecimal.ONE),
+            ConvUnit("kJ", "Kilojoules", d("1000")),
+            ConvUnit("cal", "Calories", d("4.184")),
+            ConvUnit("kcal", "Kilocalories", d("4184")),
+            ConvUnit("Wh", "Watt-hours", d("3600")),
+            ConvUnit("kWh", "Kilowatt-hours", d("3600000")),
+            ConvUnit("eV", "Electronvolts", d("1.602176634e-19"))
+        ), "kJ"
     )
 )
 
