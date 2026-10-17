@@ -42,6 +42,9 @@ class Base64CodecTest {
     fun decodeKeepsBinary() {
         assertArrayEquals(byteArrayOf(-1, -2, 0), base64DecodeBytes("//4A"))
         assertNull(utf8OrNull(base64DecodeBytes("//4A")))
+        // Valid UTF-8 but control characters (bytes 00..11): binary, not text.
+        assertNull(utf8OrNull(base64DecodeBytes("AAECAwQFBgcICQoLDA0ODxAR")))
+        assertEquals("a\tb\r\nc", utf8OrNull("a\tb\r\nc".toByteArray()))
     }
 
     @Test
@@ -54,6 +57,13 @@ class Base64CodecTest {
                 assertTrue(e.message!!.isNotEmpty())
             }
         }
+    }
+
+    @Test
+    fun invalidCharactersAreReportedBeforeLength() {
+        fun message(s: String) = runCatching { base64DecodeBytes(s) }.exceptionOrNull()!!.message!!
+        assertTrue(message("SGVsbG8$%").startsWith("This is not valid Base64"))
+        assertTrue(message("Zm9vY").contains("too long or too short"))
     }
 
     @Test

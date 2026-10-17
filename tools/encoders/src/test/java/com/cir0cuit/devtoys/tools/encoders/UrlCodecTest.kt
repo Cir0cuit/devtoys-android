@@ -1,6 +1,8 @@
 package com.cir0cuit.devtoys.tools.encoders
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** Expectations follow RFC 3986 section 2 (percent-encoding, unreserved = ALPHA / DIGIT / "-" / "." / "_" / "~"). */
@@ -124,5 +126,12 @@ class UrlCodecTest {
         assertEquals("https://x.io/p?id=1#s", stripTracking("https://x.io/p?utm_source=a&id=1&fbclid=z#s"))
         assertEquals("https://x.io/p", stripTracking("https://x.io/p?utm_medium=b&gclid=c"))
         assertEquals("https://x.io/p?a=%20", stripTracking("https://x.io/p?a=%20"))
+    }
+
+    @Test
+    fun decodeWarnsAboutLonePercentAndBadUtf8() {
+        assertNotNull(urlDecodeWarning("100%zz off"))
+        assertNotNull(urlDecodeWarning("off %E2%82"))
+        assertNull(urlDecodeWarning("caf%C3%A9 100%25 a+b"))
     }
 }

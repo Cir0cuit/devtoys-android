@@ -4,7 +4,10 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
-/** The bytes as text when they are valid UTF-8, otherwise null. */
+/**
+ * The bytes as text when they are valid UTF-8 without control characters (tab, line feed and
+ * carriage return are allowed), otherwise null, so binary data is shown as a hex dump.
+ */
 internal fun utf8OrNull(bytes: ByteArray): String? =
     try {
         Charsets.UTF_8.newDecoder()
@@ -12,6 +15,7 @@ internal fun utf8OrNull(bytes: ByteArray): String? =
             .onUnmappableCharacter(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(bytes))
             .toString()
+            .takeIf { text -> text.none { Character.isISOControl(it) && it !in "\t\n\r" } }
     } catch (e: CharacterCodingException) {
         null
     }

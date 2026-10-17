@@ -65,6 +65,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
+import com.cir0cuit.devtoys.core.ui.MonoTextField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -72,6 +73,7 @@ import com.cir0cuit.devtoys.tools.base.ToolDescriptor
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -111,6 +113,7 @@ internal tailrec fun Context.findActivity(): Activity? = when (this) {
 
 private const val PREVIEW_MAX_SIDE = 2048
 private const val PREVIEW_MAX_CHARS = 500
+private const val EDIT_MAX_CHARS = 20_000
 
 private fun encodeBase64(bytes: ByteArray, mime: String, addPrefix: Boolean): String =
     (if (addPrefix) "data:$mime;base64," else "") + Base64.encodeToString(bytes, Base64.NO_WRAP)
@@ -186,6 +189,9 @@ class ImageBase64Tool : Tool {
     override fun Content(modifier: Modifier) {
         var isEncodeMode by rememberSaveable { mutableStateOf(true) }
         val vm: ImageBase64ViewModel = viewModel()
+        // The view model is cleared when the tool closes; this capped saved copy brings typed Base64 back on reopen.
+        var savedDecodeInput by rememberSaveableText()
+        val setDecodeInput: (String) -> Unit = { vm.decodeBase64String = it; savedDecodeInput = it }
 
         var addPrefix by rememberSaveable { mutableStateOf(true) }
         val context = LocalContext.current
@@ -271,7 +277,7 @@ class ImageBase64Tool : Tool {
                     try {
                         val text = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }.orEmpty()
                         withContext(Dispatchers.Main) {
-                            vm.decodeBase64String = text
+                            setDecodeInput(text)
                         }
                     } catch (e: Throwable) {
                         withContext(Dispatchers.Main) {
@@ -304,12 +310,14 @@ class ImageBase64Tool : Tool {
             }
         }
 
-        val decodeBase64String = vm.decodeBase64String
+        val decodeBase64String = vm.decodeBase64String.ifEmpty { savedDecodeInput }
         LaunchedEffect(decodeBase64String) {
             if (vm.decodedBase64String == decodeBase64String) return@LaunchedEffect
             val result: Triple<Bitmap?, Bitmap?, String> = if (decodeBase64String.isEmpty()) {
                 Triple(null, null, "")
             } else {
+                // Debounce typing, but not the first decode after opening; the next keystroke restarts this effect.
+                if (vm.decodedBase64String != null) delay(250)
                 withContext(Dispatchers.IO) {
                     try {
                         // substringAfter keeps the whole string when there is no data URI prefix.
@@ -397,7 +405,7 @@ class ImageBase64Tool : Tool {
                         try {
                             val clipText = clipboard.getText()?.text
                             if (!clipText.isNullOrEmpty()) {
-                                vm.decodeBase64String = clipText
+                                setDecodeInput(clipText)
                             } else {
                                 vm.decodeErrorMessage = "The clipboard has no text. Copy the Base64 first."
                             }
@@ -409,20 +417,17 @@ class ImageBase64Tool : Tool {
                 }
                 Spacer(Modifier.height(16.dp))
 
-                if (decodeBase64String.isNotEmpty()) {
+                // Large pasted or loaded images stay read-only: a multi-MB TextField is too slow to edit.
+                if (decodeBase64String.length <= EDIT_MAX_CHARS) {
+                    MonoTextField(decodeBase64String, setDecodeInput, "Base64 or data URI", minLines = 4, maxLines = 10)
+                } else {
                     Base64Preview("Base64 input", decodeBase64String) {
-                        IconButton(onClick = { vm.decodeBase64String = "" }) {
+                        IconButton(onClick = { setDecodeInput("") }) {
                             Icon(Icons.Default.Clear, contentDescription = "Clear input", modifier = Modifier.size(20.dp))
                         }
                     }
-                    Spacer(Modifier.height(16.dp))
-                } else if (vm.decodeErrorMessage.isEmpty()) {
-                    Text(
-                        "Paste Base64 or a data URI, or load it from a .txt file.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
+                Spacer(Modifier.height(16.dp))
 
                 if (vm.decodeErrorMessage.isNotEmpty()) {
                     ErrorText(vm.decodeErrorMessage)

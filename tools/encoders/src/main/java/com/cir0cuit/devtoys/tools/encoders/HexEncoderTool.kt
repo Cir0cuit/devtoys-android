@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.ShareKind
 import com.cir0cuit.devtoys.tools.base.Tool
@@ -80,6 +81,7 @@ class HexEncoderTool : Tool {
                 encode = { hexEncode(it, format, upper) },
                 decodeBytes = ::hexDecodeBytes,
                 optionsKey = format to upper,
+                encodedIsDump = format == HexFormat.DUMP,
                 options = { isEncode ->
                     if (isEncode) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

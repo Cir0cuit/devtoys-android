@@ -28,6 +28,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -129,6 +130,7 @@ class GzipViewModel : ViewModel() {
 private class ZipResult(val key: Any?, val error: String? = null, val inSize: Int = 0, val output: ByteArray? = null, val format: ZipFormat? = null, val text: String = "")
 
 private const val MAX_SHOWN_CHARS = 200_000
+private const val SYNC_INPUT_CHARS = 64 * 1024
 
 class GzipTool : Tool {
     override val descriptor = ToolDescriptor(
@@ -189,28 +191,30 @@ class GzipTool : Tool {
 
         val input = if (decompressMode) decompressInput else compressInput
         val key = listOf(decompressMode, input, file, format, asHex)
-        val result by produceState(ZipResult(null), key) {
+        fun compute(): ZipResult = try {
+            if (decompressMode) {
+                val data = file?.second ?: parseBinaryText(input)
+                val (detected, out) = decompress(data)
+                ZipResult(key, inSize = data.size, output = out, format = detected)
+            } else {
+                val data = file?.second ?: input.toByteArray()
+                val out = compress(data, format)
+                val text = if (out.size * 2 > MAX_SHOWN_CHARS) "" else if (asHex) out.joinToString("") { "%02x".format(it) } else java.util.Base64.getEncoder().encodeToString(out)
+                ZipResult(key, inSize = data.size, output = out, format = format, text = text)
+            }
+        } catch (e: IllegalArgumentException) {
+            ZipResult(key, error = e.message)
+        }
+        // Small saved text is computed in the first frame on reopening, so the output is not blank for a moment.
+        val initial = remember { if (file == null && input.length < SYNC_INPUT_CHARS) (if (input.isEmpty()) ZipResult(key) else compute()) else ZipResult(null) }
+        val result by produceState(initial, key) {
+            if (value.key == key) return@produceState
             if (file == null && input.isEmpty()) {
                 value = ZipResult(key)
                 return@produceState
             }
-            delay(250) // debounce typing; a newer key cancels this run
-            value = withContext(Dispatchers.Default) {
-                try {
-                    if (decompressMode) {
-                        val data = file?.second ?: parseBinaryText(input)
-                        val (detected, out) = decompress(data)
-                        ZipResult(key, inSize = data.size, output = out, format = detected)
-                    } else {
-                        val data = file?.second ?: input.toByteArray()
-                        val out = compress(data, format)
-                        val text = if (out.size * 2 > MAX_SHOWN_CHARS) "" else if (asHex) out.joinToString("") { "%02x".format(it) } else java.util.Base64.getEncoder().encodeToString(out)
-                        ZipResult(key, inSize = data.size, output = out, format = format, text = text)
-                    }
-                } catch (e: IllegalArgumentException) {
-                    ZipResult(key, error = e.message)
-                }
-            }
+            if (value.key != null) delay(250) // debounce typing, not the first run after opening; a newer key cancels this run
+            value = withContext(Dispatchers.Default) { compute() }
         }
         val current = result.takeIf { it.key == key }
 

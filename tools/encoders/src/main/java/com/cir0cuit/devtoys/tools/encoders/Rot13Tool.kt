@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.ui.MonoTextField
 import com.cir0cuit.devtoys.core.ui.OutputPanel
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -76,17 +77,40 @@ private val ENGLISH_FREQ = doubleArrayOf(
     6.7, 7.5, 1.9, 0.095, 6.0, 6.3, 9.1, 2.8, 0.98, 2.4, 0.15, 2.0, 0.074
 )
 
-/** Chi-squared distance of the text's letter counts from English; lower is more English-like. */
+private val COMMON_BIGRAMS = (
+    "th he in er an re on at en nd ti es or te of ed is it al ar st to nt ng se ha as ou io " +
+    "le ve co me de hi ri ro ic ne ea ra ce li ch ll be ma si om ur"
+).split(' ').toSet()
+
+private val COMMON_WORDS = (
+    "the of and to in is you that it he was for on are as with his they at be this have from or " +
+    "one had by but not what all were we when your can said there an each which she do how their " +
+    "if will up other about out many then them these so some her would make like him into time has " +
+    "look two more go see no way could people my than first been who its now day did get come made may i a am"
+).split(' ').toSet()
+
+/**
+ * How English-like the text looks; higher is better. Sums the share of letters in common English
+ * words (weighted double), the share of letter pairs that are common English bigrams, and a
+ * chi-squared letter-frequency term. Chi-squared alone ranks gibberish first on short input.
+ */
+// ponytail: fixed word and bigram lists; switch to quadgram log-likelihood if ranking long texts matters.
 internal fun englishScore(text: String): Double {
+    val words = text.lowercase().split(Regex("[^a-z]+")).filter { it.isNotEmpty() }
+    val letters = words.sumOf { it.length }
+    if (letters == 0) return Double.NEGATIVE_INFINITY
     val counts = IntArray(26)
-    text.forEach { c -> if (c in 'a'..'z') counts[c - 'a']++ else if (c in 'A'..'Z') counts[c - 'A']++ }
-    val total = counts.sum().takeIf { it > 0 } ?: return Double.MAX_VALUE
-    return counts.indices.sumOf { i -> val expected = total * ENGLISH_FREQ[i] / 100; (counts[i] - expected).let { it * it } / expected }
+    words.forEach { w -> w.forEach { counts[it - 'a']++ } }
+    val chi = counts.indices.sumOf { i -> val expected = letters * ENGLISH_FREQ[i] / 100; (counts[i] - expected).let { it * it } / expected }
+    val pairs = words.sumOf { it.length - 1 }
+    val bigramHits = words.sumOf { w -> (0 until w.length - 1).count { w.substring(it, it + 2) in COMMON_BIGRAMS } }
+    val wordLetters = words.filter { it in COMMON_WORDS }.sumOf { it.length }
+    return 2.0 * wordLetters / letters + (if (pairs > 0) bigramHits.toDouble() / pairs else 0.0) + 1 / (1 + chi / letters)
 }
 
 /** All 25 Caesar shifts as (shift, text), most English-like first. */
 internal fun allShifts(input: String): List<Pair<Int, String>> =
-    (1..25).map { it to rotN(input, it) }.sortedBy { englishScore(it.second) }
+    (1..25).map { it to rotN(input, it) }.sortedByDescending { englishScore(it.second) }
 
 internal enum class Cipher(val label: String) {
     CAESAR("Caesar / ROT-N"), ROT47("ROT47"), ROT18("ROT18 (letters + digits)"),

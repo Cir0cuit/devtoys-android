@@ -92,4 +92,12 @@ class Rot13Test {
         assertEquals(23, ranked.first().first)
         assertEquals("the quick brown fox jumps over the lazy dog", ranked.first().second)
     }
+
+    @Test
+    fun allShiftsRanksShortEnglishFirst() {
+        // Chi-squared alone ranked ROT10 "Ebiil, Tloia" and ROT2 "Wtaad, Ldgas" above the plaintext.
+        assertEquals(13 to "Hello, World 123", allShifts("Uryyb, Jbeyq 123").first())
+        assertEquals("Attack at dawn", allShifts(rotN("Attack at dawn", 7)).first().second)
+        assertEquals("Python is fun", allShifts(rotN("Python is fun", 3)).first().second)
+    }
 }

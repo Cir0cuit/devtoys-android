@@ -53,10 +53,25 @@ internal fun urlEncode(input: String, mode: UrlMode = UrlMode.COMPONENT): String
 internal fun urlDecode(input: String): String =
     try {
         // Escape lone '%' so URLDecoder does not reject the whole string.
-        URLDecoder.decode(input.replace(Regex("%(?![0-9A-Fa-f]{2})"), "%25"), "UTF-8")
+        URLDecoder.decode(input.replace(LONE_PERCENT, "%25"), "UTF-8")
     } catch (e: Exception) {
         "Error: could not decode this text (${e.message})."
     }
+
+private val LONE_PERCENT = Regex("%(?![0-9A-Fa-f]{2})")
+
+/** A note when [input] has a '%' without two hex digits or escapes that are not valid UTF-8, else null. */
+internal fun urlDecodeWarning(input: String): String? {
+    if (LONE_PERCENT.containsMatchIn(input)) return "Some '%' signs are not followed by two hex digits; they were kept as they are."
+    val bytes = java.io.ByteArrayOutputStream()
+    var i = 0
+    while (i < input.length) {
+        if (input[i] == '%') { bytes.write(input.substring(i + 1, i + 3).toInt(16)); i += 3 }
+        else { bytes.write(input.substring(i, i + 1).toByteArray()); i++ }
+    }
+    val valid = runCatching { Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())) }.isSuccess
+    return if (valid) null else "The escapes are not valid UTF-8; invalid bytes are shown as \uFFFD."
+}
 
 /** Decodes until the text stops changing, for double-encoded input like `%2520`. */
 internal fun urlDecodeRepeatedly(input: String): String {
@@ -173,6 +188,7 @@ class UrlEncoderTool : Tool {
                 encode = { urlEncode(it, mode) },
                 decode = { if (repeatDecode) urlDecodeRepeatedly(it) else urlDecode(it) },
                 optionsKey = mode to repeatDecode,
+                decodeWarning = ::urlDecodeWarning,
                 options = { isEncode ->
                     if (isEncode) {
                         ModeSelector(UrlMode.entries.map { it.label }, mode.ordinal, { mode = UrlMode.entries[it] })

@@ -53,7 +53,7 @@ internal fun rememberSaveableText(initial: String = ""): MutableState<String> =
     rememberSaveable(saver = CappedTextSaver) { mutableStateOf(initial) }
 
 /** Result of one pane computation: [text] or [bytes], or an [error] to show instead. */
-private class PaneOutput(val key: Any?, val text: String = "", val bytes: ByteArray? = null, val error: String? = null)
+private class PaneOutput(val key: Any?, val text: String = "", val bytes: ByteArray? = null, val error: String? = null, val warning: String? = null)
 
 /**
  * Encode / decode modes, each with its own saved input and a live output slab.
@@ -62,6 +62,8 @@ private class PaneOutput(val key: Any?, val text: String = "", val bytes: ByteAr
  * as a hex dump otherwise; it signals bad input by throwing IllegalArgumentException with a message.
  * [extraMode] adds a third segment rendering [extraContent]; the host scaffold must then be
  * non-scrollable, so the encode/decode body scrolls itself.
+ * With [encodedIsDump] the encoded text is shown unwrapped and scrolls sideways.
+ * [decodeWarning] returns a note shown above a successful decode result, or null.
  */
 @Composable
 internal fun EncodeDecodePane(
@@ -69,6 +71,8 @@ internal fun EncodeDecodePane(
     decode: (String) -> String = { "" },
     decodeBytes: ((String) -> ByteArray)? = null,
     optionsKey: Any? = null,
+    encodedIsDump: Boolean = false,
+    decodeWarning: (String) -> String? = { null },
     options: @Composable (isEncode: Boolean) -> Unit = {},
     extraMode: String? = null,
     extraContent: @Composable () -> Unit = {}
@@ -95,7 +99,8 @@ internal fun EncodeDecodePane(
         val input = if (isEncode) encodeInput else decodeInput
         val key = listOf(input, isEncode, optionsKey)
         val output by produceState(PaneOutput(null), key) {
-            if (input.length > 2_000) delay(150) // debounce typing in large inputs; the key change cancels this
+            // Debounce typing in large inputs (the key change cancels this), but not the first run after opening.
+            if (value.key != null && input.length > 2_000) delay(150)
             value = withContext(Dispatchers.Default) {
                 when {
                     input.isEmpty() -> PaneOutput(key)
@@ -106,7 +111,7 @@ internal fun EncodeDecodePane(
                     } catch (e: IllegalArgumentException) {
                         PaneOutput(key, error = e.message ?: "This input could not be decoded.")
                     }
-                    else -> decode(input).let { if (it.startsWith("Error: ")) PaneOutput(key, error = it) else PaneOutput(key, it) }
+                    else -> decode(input).let { if (it.startsWith("Error: ")) PaneOutput(key, error = it) else PaneOutput(key, it, warning = decodeWarning(input)) }
                 }
             }
         }
@@ -116,7 +121,8 @@ internal fun EncodeDecodePane(
                 input,
                 { if (isEncode) encodeInput = it else decodeInput = it },
                 if (isEncode) "Text to encode" else "Text to decode",
-                minLines = 5
+                minLines = 5,
+                isError = current?.error != null
             )
             Spacer(Modifier.height(16.dp))
             options(isEncode)
@@ -126,7 +132,9 @@ internal fun EncodeDecodePane(
                 bytes != null -> BytesOutput(bytes, "Decoded")
                 else -> {
                     val text = current?.text.orEmpty()
-                    OutputPanel(text, label = if (isEncode) "Encoded" else "Decoded")
+                    current?.warning?.let { ErrorText(it); Spacer(Modifier.height(8.dp)) }
+                    if (isEncode && encodedIsDump) NoWrapOutputPanel(text, label = "Encoded")
+                    else OutputPanel(text, label = if (isEncode) "Encoded" else "Decoded")
                     if (text.isNotEmpty()) {
                         // Round-trip: hand the result to the other mode.
                         TextButton(
@@ -167,7 +175,8 @@ internal fun base64DecodeBytes(input: String): ByteArray {
         return Base64.getDecoder().decode(cleaned)
     } catch (e: IllegalArgumentException) {
         throw IllegalArgumentException(
-            if (cleaned.length % 4 == 1) "This Base64 is one character too long or too short. Check that it was copied completely."
+            if (cleaned.length % 4 == 1 && cleaned.all { it.isLetterOrDigit() && it.code < 128 || it == '+' || it == '/' })
+                "This Base64 is one character too long or too short. Check that it was copied completely."
             else "This is not valid Base64. Use only A-Z, a-z, 0-9, + / (or - _) and = padding."
         )
     }
