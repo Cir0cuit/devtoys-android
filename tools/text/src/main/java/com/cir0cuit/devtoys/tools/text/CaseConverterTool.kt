@@ -46,7 +46,7 @@ import kotlinx.coroutines.withContext
 import java.text.Normalizer
 import java.util.Locale
 
-private val WORD = Regex("\\p{Lu}+(?!\\p{Ll})|\\p{Lu}?\\p{Ll}+|\\p{N}+|\\p{L}+")
+private val WORD = Regex("\\p{Lu}+(?!\\p{Ll})\\p{N}*|\\p{Lu}?\\p{Ll}+\\p{N}*|\\p{N}+|\\p{L}+\\p{N}*")
 private val WORD_START = Regex("(?<![\\p{L}\\p{N}'])\\p{L}")
 private val SENTENCE_START = Regex("(^|[.!?]\\s+)(\\p{L})")
 private val MARKS = Regex("\\p{Mn}+")
