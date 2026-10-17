@@ -10,6 +10,7 @@ An offline collection of developer utilities: Jetpack Compose, Hilt, Kotlin 2.0.
 - Run only one Gradle build at a time in this checkout. Parallel builds have failed in `packageDebug` and left test workers hanging. Subagents must not run Gradle concurrently.
 - Before calling a change done, run `testDebugUnitTest lintDebug assembleRelease`. Lint errors fail the build, and the release build catches R8 problems.
 - Manual check on a device: the `/device-test` skill. The `mobile-mcp` MCP server can drive the device interactively.
+- Releases: the `/release-devtoys-android` skill. Pushing a `v<versionName>` tag makes `.github/workflows/release.yml` sign and publish the APK; F-Droid builds the same tag and ships it only if its build is byte-identical, so release builds must stay reproducible.
 
 ## Layout
 
