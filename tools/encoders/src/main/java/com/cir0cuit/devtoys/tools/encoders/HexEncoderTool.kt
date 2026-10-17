@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
 import com.cir0cuit.devtoys.tools.base.ToolDescriptor
@@ -65,7 +66,8 @@ class HexEncoderTool : Tool {
         description = "Convert text to hex bytes and back",
         icon = Icons.Default.Numbers,
         category = ToolCategory.ENCODERS_DECODERS,
-        keywords = listOf("hex", "encode", "hexdump", "bytes", "c array")
+        keywords = listOf("hex", "encode", "hexdump", "bytes", "c array"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @OptIn(ExperimentalMaterial3Api::class) // FilterChip

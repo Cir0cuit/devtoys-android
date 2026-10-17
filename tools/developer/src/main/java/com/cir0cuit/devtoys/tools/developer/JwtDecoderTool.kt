@@ -28,7 +28,8 @@ class JwtDecoderTool : Tool {
         description = "Decode, verify and sign JSON Web Tokens",
         icon = Icons.Default.VpnKey,
         category = ToolCategory.ENCODERS_DECODERS,
-        keywords = listOf("jwt", "decode", "encode", "verify", "sign", "jws", "token", "bearer")
+        keywords = listOf("jwt", "decode", "encode", "verify", "sign", "jws", "token", "bearer"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +54,7 @@ class JwtDecoderTool : Tool {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable private fun ColumnScope.DecodePane() {
         var input by rememberSaveable { mutableStateOf(SAMPLE_TOKEN) }
+        OnSharedText { input = it.trim() }
         var key by rememberSaveable { mutableStateOf("") }
         var base64Secret by rememberSaveable { mutableStateOf(false) }
         val clipboard = LocalClipboardManager.current

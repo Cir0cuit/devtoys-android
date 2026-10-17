@@ -1,5 +1,7 @@
 package com.cir0cuit.devtoys.tools.encoders
 
+import com.cir0cuit.devtoys.tools.base.OnSharedImage
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -176,7 +178,8 @@ class ImageBase64Tool : Tool {
         description = "Turn images into Base64 and back",
         icon = Icons.Default.Image,
         category = ToolCategory.GRAPHICS,
-        keywords = listOf("image", "base64", "encode", "decode", "picture")
+        keywords = listOf("image", "base64", "encode", "decode", "picture"),
+        accepts = setOf(ShareKind.IMAGE)
     )
 
     @Composable
@@ -218,6 +221,7 @@ class ImageBase64Tool : Tool {
                 }
             }
         }
+        OnSharedImage { isEncodeMode = true; loadImage(it) }
         // System photo picker; falls back to the document picker where it is unavailable.
         val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? -> uri?.let(loadImage) }
         // The camera app writes into our FileProvider cache path, so no CAMERA permission is needed.

@@ -1,5 +1,7 @@
 package com.cir0cuit.devtoys.tools.text
 
+import com.cir0cuit.devtoys.tools.base.OnSharedText
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
@@ -41,11 +43,13 @@ class TextStatsTool : Tool {
     override val descriptor = ToolDescriptor(
         "text-stats", "Text Statistics", "Count characters, words, lines and bytes",
         Icons.Default.QueryStats, ToolCategory.TEXT,
-        listOf("count", "statistics", "analyzer", "length", "words", "characters", "bytes", "graphemes", "lines")
+        listOf("count", "statistics", "analyzer", "length", "words", "characters", "bytes", "graphemes", "lines"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable(saver = boundedTextSaver) { mutableStateOf("") }
+        OnSharedText { input = it }
         val stats by rememberDebounced(EMPTY_STATS, input) { computeTextStats(input) }
 
         ToolScaffold(descriptor.title, modifier = modifier) {

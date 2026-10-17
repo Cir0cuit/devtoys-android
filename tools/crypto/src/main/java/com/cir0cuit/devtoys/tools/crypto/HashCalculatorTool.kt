@@ -1,5 +1,7 @@
 package com.cir0cuit.devtoys.tools.crypto
 
+import com.cir0cuit.devtoys.tools.base.OnSharedText
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import android.os.Build
 import android.content.Context
 import android.net.Uri
@@ -187,7 +189,8 @@ class HashCalculatorTool : Tool {
         description = "Hash text or files with MD5, SHA and CRC",
         icon = Icons.Default.Lock,
         category = ToolCategory.CRYPTOGRAPHY,
-        keywords = listOf("hash", "md5", "sha", "checksum", "file", "crc32", "sha256sum", "verify")
+        keywords = listOf("hash", "md5", "sha", "checksum", "file", "crc32", "sha256sum", "verify"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -203,6 +206,7 @@ class HashCalculatorTool : Tool {
         // Newline-separated content URIs.
         var fileUris by rememberSaveable { mutableStateOf("") }
         var isFileMode by rememberSaveable { mutableStateOf(false) }
+        OnSharedText { textInput = it; isFileMode = false }
         var compareHash by rememberSaveable { mutableStateOf("") }
         var sumsName by rememberSaveable { mutableStateOf<String?>(null) }
         var sumsText by rememberSaveableText()

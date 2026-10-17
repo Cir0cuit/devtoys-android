@@ -1,6 +1,12 @@
 package com.cir0cuit.devtoys
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import androidx.core.content.IntentCompat
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.cir0cuit.devtoys.tools.base.SharedContent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -22,6 +28,9 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var toolRegistry: ToolRegistry
     @Inject lateinit var settingsRepository: SettingsRepository
 
+    // ponytail: not saved across recreation; a pending share picker closes on rotation, a tool that received it keeps its input.
+    private var shared by mutableStateOf<SharedContent?>(null)
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && settingsRepository.hideStatusBar.value) {
@@ -33,6 +42,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) shared = intent.sharedContent()
         
         splashScreen.setKeepOnScreenCondition {
             !settingsRepository.isLoaded.value
@@ -72,8 +82,25 @@ class MainActivity : ComponentActivity() {
                         isAppearanceLightNavigationBars = !isDarkTheme
                     }
                 }
-                MainScreen(toolRegistry = toolRegistry, settingsRepository = settingsRepository, initialToolId = intent.getStringExtra("tool"))
+                MainScreen(
+                    toolRegistry = toolRegistry,
+                    settingsRepository = settingsRepository,
+                    initialToolId = intent.getStringExtra("tool"),
+                    shared = shared,
+                    onShareDone = { shared = null }
+                )
             }
         }
     }
+}
+
+/** Largest shared text accepted; longer text is cut so tool state stays within the saved-state limit. */
+private const val MAX_SHARED_CHARS = 200_000
+
+private fun Intent.sharedContent(): SharedContent? {
+    if (action != Intent.ACTION_SEND) return null
+    if (type?.startsWith("image/") == true) {
+        return IntentCompat.getParcelableExtra(this, Intent.EXTRA_STREAM, Uri::class.java)?.let { SharedContent.Image(it) }
+    }
+    return getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.take(MAX_SHARED_CHARS)?.let { SharedContent.Text(it) }
 }

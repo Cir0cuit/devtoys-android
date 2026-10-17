@@ -1,5 +1,6 @@
 package com.cir0cuit.devtoys.tools.developer
 
+import com.cir0cuit.devtoys.tools.base.OnSharedText
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -108,7 +109,8 @@ class MarkdownTool : Tool {
         description = "Write Markdown and preview it as you type",
         icon = Icons.Default.EditNote,
         category = ToolCategory.TEXT,
-        keywords = listOf("markdown", "preview", "cheatsheet", "html", "pdf")
+        keywords = listOf("markdown", "preview", "cheatsheet", "html", "pdf"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @Composable override fun Content(modifier: Modifier) {
@@ -116,6 +118,7 @@ class MarkdownTool : Tool {
         var field by rememberSaveable(stateSaver = TextFieldValue.Saver) {
             mutableStateOf(TextFieldValue("# Hello World\n\nThis is **Markdown**."))
         }
+        OnSharedText { field = TextFieldValue(it) }
         val input = field.text
         var exportMenu by remember { mutableStateOf(false) }
 

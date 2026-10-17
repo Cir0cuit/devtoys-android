@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.MonoTextField
 import com.cir0cuit.devtoys.core.ui.OutputPanel
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
 import com.cir0cuit.devtoys.tools.base.ToolDescriptor
@@ -158,7 +159,8 @@ class UrlEncoderTool : Tool {
         description = "Percent-encode, decode and parse URLs",
         icon = Icons.Default.Link,
         category = ToolCategory.ENCODERS_DECODERS,
-        keywords = listOf("url", "encode", "parse", "query", "utm", "percent")
+        keywords = listOf("url", "encode", "parse", "query", "utm", "percent"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @OptIn(ExperimentalMaterial3Api::class) // FilterChip

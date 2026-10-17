@@ -1,5 +1,7 @@
 package com.cir0cuit.devtoys.tools.text
 
+import com.cir0cuit.devtoys.tools.base.OnSharedText
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
@@ -138,12 +140,14 @@ class CaseConverterTool : Tool {
     override val descriptor = ToolDescriptor(
         "case", "Case Converter", "Convert text to upper, lower, title, camel, snake or kebab case",
         Icons.Default.FormatSize, ToolCategory.TEXT,
-        listOf("case", "upper", "lower", "camel", "snake", "kebab", "title", "slug", "slugify", "train", "dot")
+        listOf("case", "upper", "lower", "camel", "snake", "kebab", "title", "slug", "slugify", "train", "dot"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @OptIn(ExperimentalFoundationApi::class)
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable(saver = boundedTextSaver) { mutableStateOf("The quick brown fox") }
+        OnSharedText { input = it }
         var deviceLocale by rememberSaveable { mutableStateOf(false) }
         val clipboard = LocalClipboardManager.current
         val context = LocalContext.current

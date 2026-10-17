@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.ui.MonoTextField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
 import com.cir0cuit.devtoys.tools.base.ToolDescriptor
@@ -84,7 +85,8 @@ class HtmlEntityTool : Tool {
         description = "Escape and unescape HTML entities",
         icon = Icons.Default.Html,
         category = ToolCategory.ENCODERS_DECODERS,
-        keywords = listOf("html", "entity", "encode")
+        keywords = listOf("html", "entity", "encode"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @Composable

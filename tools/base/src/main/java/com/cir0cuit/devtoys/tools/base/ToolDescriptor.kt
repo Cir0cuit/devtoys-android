@@ -8,5 +8,6 @@ data class ToolDescriptor(
     val description: String,        // one line, plain language
     val icon: ImageVector,
     val category: ToolCategory,
-    val keywords: List<String>       // for search
+    val keywords: List<String>,      // for search
+    val accepts: Set<ShareKind> = emptySet()  // content this tool can receive from the share sheet
 )

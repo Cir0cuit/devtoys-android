@@ -46,11 +46,13 @@ internal fun runJsonTool(input: String, mode: JsonMode, indent: JsonIndent, sort
 class JsonFormatterTool : Tool {
     override val descriptor = ToolDescriptor(
         "json-formatter", "JSON Formatter", "Format, validate and escape JSON", Icons.Default.DataObject,
-        ToolCategory.FORMATTERS, listOf("json", "format", "minify", "validate", "escape", "stringify", "tree", "sort")
+        ToolCategory.FORMATTERS, listOf("json", "format", "minify", "validate", "escape", "stringify", "tree", "sort"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberCappedText("{\"name\":\"devtoys\",\"tags\":[\"json\",\"format\"],\"stars\":42}")
+        OnSharedText { input = it }
         var mode by rememberSaveable { mutableStateOf(JsonMode.FORMAT) }
         var indent by rememberSaveable { mutableStateOf(JsonIndent.TWO) }
         var sort by rememberSaveable { mutableStateOf(false) }

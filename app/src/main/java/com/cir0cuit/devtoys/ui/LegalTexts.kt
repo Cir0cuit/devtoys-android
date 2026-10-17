@@ -41,13 +41,16 @@ object LegalTexts {
         4. DEVICE PERMISSIONS
         The Application may request specific device permissions (such as access to the clipboard or local storage) solely to enable the functionality of specific utilities within the Application. These permissions are utilized strictly locally. They are never employed for data extraction, background tracking, or off-device transmission. If you choose to deny these permissions, certain features of the Application may be unavailable, but the core functionalities that do not require such permissions will continue to operate normally.
 
-        5. CHILDREN'S PRIVACY
+        5. CONTENT SHARED FROM OTHER APPS
+        You can send text or images to the Application through the Android share menu. Shared content is only passed to the tool you choose, processed on your device and kept no longer than that tool keeps its input. It is never stored elsewhere or transmitted. The Application receives only what you explicitly share.
+
+        6. CHILDREN'S PRIVACY
         My strict zero-data policy applies universally. I do not collect any personally identifiable information from anyone, including children under the age of 13.
 
-        6. CHANGES TO THIS PRIVACY POLICY
+        7. CHANGES TO THIS PRIVACY POLICY
         Changes to this Privacy Policy are published in the Application and in the public source repository. Changes are effective when they are published.
 
-        7. CONTACT
+        8. CONTACT
         If you have any questions about this Privacy Policy, please open an issue at:
         $ISSUES_URL
     """.trimIndent()

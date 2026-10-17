@@ -1,5 +1,6 @@
 package com.cir0cuit.devtoys.tools.encoders
 
+import com.cir0cuit.devtoys.tools.base.OnSharedText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.MonoTextField
 import com.cir0cuit.devtoys.core.ui.OutputPanel
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
+import com.cir0cuit.devtoys.tools.base.ShareKind
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
 import com.cir0cuit.devtoys.tools.base.ToolDescriptor
@@ -74,6 +76,15 @@ internal fun EncodeDecodePane(
     var encodeInput by rememberSaveableText()
     var decodeInput by rememberSaveableText()
     var mode by rememberSaveable { mutableStateOf(0) }
+    OnSharedText { text ->
+        // Shared text that decodes to something different is treated as encoded; anything else is encoded.
+        val decoded = runCatching { decodeBytes?.invoke(text)?.let(::utf8OrNull) ?: decode(text) }.getOrNull()
+        if (decoded != null && !decoded.startsWith("Error: ") && decoded != text) {
+            decodeInput = text; mode = 1
+        } else {
+            encodeInput = text; mode = 0
+        }
+    }
 
     ModeSelector(listOfNotNull("Encode", "Decode", extraMode), mode, { mode = it })
     Spacer(Modifier.height(16.dp))
@@ -169,7 +180,8 @@ class Base64Tool : Tool {
         description = "Encode and decode Base64 text",
         icon = Icons.Default.TextFormat,
         category = ToolCategory.ENCODERS_DECODERS,
-        keywords = listOf("base64", "encode", "decode", "url-safe", "mime")
+        keywords = listOf("base64", "encode", "decode", "url-safe", "mime"),
+        accepts = setOf(ShareKind.TEXT)
     )
 
     @OptIn(ExperimentalMaterial3Api::class) // FilterChip
