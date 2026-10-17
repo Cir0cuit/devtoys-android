@@ -59,11 +59,16 @@ class TextStatsTool : Tool {
             ValueRowsSlab(statRows(stats))
             if (stats.topWords.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
-                OutputPanel(stats.topWords.joinToString("\n") { (w, n) -> "$w\t$n" }, label = "Top words")
+                OutputPanel(topWordsText(stats.topWords), label = "Top words")
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+/** One "word  count" row per word, counts aligned in a column (the panel is monospaced). */
+internal fun topWordsText(words: List<Pair<String, Int>>): String {
+    val width = words.maxOfOrNull { (w, _) -> w.codePointCount(0, w.length) } ?: 0
+    return words.joinToString("\n") { (w, n) -> w + " ".repeat(width - w.codePointCount(0, w.length) + 2) + n }
 }
 
 internal fun statRows(s: TextStats): List<Pair<String, String>> {

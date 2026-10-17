@@ -215,7 +215,6 @@ class TextDiffTool : Tool {
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.MonoTextField
 import com.cir0cuit.devtoys.core.ui.OutputPanel
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -61,7 +62,7 @@ class StringEscapeTool : Tool {
         ToolScaffold(descriptor.title, modifier = modifier) {
             MonoTextField(input, { input = it }, "Input", minLines = 4)
             Spacer(Modifier.height(16.dp))
-            TextSelectField("Format", format, EscapeFormat.entries, { formatName = it.name }, Modifier.fillMaxWidth()) { it.label }
+            SelectField("Format", format, EscapeFormat.entries, { formatName = it.name }, Modifier.fillMaxWidth()) { it.label }
             Spacer(Modifier.height(8.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf("Escape", "Unescape").forEachIndexed { i, label ->
@@ -80,7 +81,6 @@ class StringEscapeTool : Tool {
             } else {
                 OutputPanel(result.getOrDefault(""), label = if (unescape) "Unescaped" else "Escaped")
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }

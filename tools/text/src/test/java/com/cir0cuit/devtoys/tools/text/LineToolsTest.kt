@@ -140,6 +140,12 @@ class LineToolsTest {
         assertEquals(3, r.inputLines)
         val bad = computeLines("a", "Filter", LineOptions(pattern = "(", regex = true))
         assertTrue(bad.error!!.startsWith("Invalid regex"))
+        for (p in listOf("[a-", "[a-z", "[]", "[^]a", "x[\\]")) {
+            val msg = computeLines("a", "Filter", LineOptions(pattern = p, regex = true)).error
+            assertTrue("$p: $msg", msg!!.startsWith("Invalid regex: Missing ] to close the character class."))
+        }
+        val reversed = computeLines("a", "Filter", LineOptions(pattern = "[z-a]", regex = true)).error!!
+        assertTrue(reversed, !reversed.contains("Missing ]"))
     }
 
     @Test

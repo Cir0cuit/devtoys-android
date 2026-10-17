@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.NumberedTextField
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -84,7 +85,7 @@ class ListCompareTool : Tool {
                         FilterChip(selected = trim, onClick = { trim = !trim }, label = { Text("Trim spaces", maxLines = 1) })
                         FilterChip(selected = skipEmpty, onClick = { skipEmpty = !skipEmpty }, label = { Text("Skip empty", maxLines = 1) })
                     }
-                    TextSelectField("Show", set, ListSet.entries, { setName = it.name }, Modifier.fillMaxWidth()) {
+                    SelectField("Show", set, ListSet.entries, { setName = it.name }, Modifier.fillMaxWidth()) {
                         "${it.label} (${it.pick(comparison).size})"
                     }
                     val result = set.pick(comparison)
@@ -93,7 +94,6 @@ class ListCompareTool : Tool {
                     NumberedTextField(text, {}, modifier = paneModifier, readOnly = true)
                 }
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }

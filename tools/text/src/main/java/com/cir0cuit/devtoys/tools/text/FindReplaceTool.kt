@@ -143,7 +143,6 @@ class FindReplaceTool : Tool {
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -159,7 +158,7 @@ internal fun findAndReplace(input: String, find: String, replace: String, option
     val pattern = try {
         Pattern.compile(source, flags)
     } catch (e: PatternSyntaxException) {
-        return ReplaceResult(input, 0, emptyList(), "Invalid pattern: ${e.description}" + (if (e.index >= 0) " near position ${e.index + 1}" else "") + ". Escape special characters with \\ or turn off Regex.")
+        return ReplaceResult(input, 0, emptyList(), "Invalid pattern: ${regexErrorDescription(e)}" + (if (e.index >= 0) " near position ${e.index + 1}" else "") + ". Escape special characters with \\ or turn off Regex.")
     }
     val replacement = if (options.regex) replace else Matcher.quoteReplacement(replace)
     // ponytail: the deadline is checked between matches only. Android's ICU-backed Matcher copies the input
@@ -183,8 +182,14 @@ internal fun findAndReplace(input: String, find: String, replace: String, option
             count++
         }
         matcher.appendTail(out)
+        // With no match the replacement never ran; check it against an empty match with the same groups.
+        if (count == 0 && options.regex) {
+            val probe = try { Pattern.compile("(?:$source)|", flags).matcher("") } catch (e: PatternSyntaxException) { null }
+            if (probe != null && probe.find()) probe.appendReplacement(StringBuffer(), replacement)
+        }
     } catch (e: IllegalArgumentException) {
-        return ReplaceResult(input, 0, emptyList(), "Invalid replacement: ${e.message}. Write a literal \$ as \\\$ and a literal \\ as \\\\.")
+        // U+2060 (word joiner) stops the line from wrapping between the two backslashes of \\.
+        return ReplaceResult(input, 0, emptyList(), "Invalid replacement: ${e.message}. Write a literal \$ as \\\$ and a literal \\ as \\${Char(0x2060)}\\.")
     } catch (e: IndexOutOfBoundsException) {
         return ReplaceResult(input, 0, emptyList(), "Invalid replacement: ${e.message}. Use a group number that exists in the pattern.")
     }

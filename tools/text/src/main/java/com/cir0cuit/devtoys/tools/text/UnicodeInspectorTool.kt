@@ -95,7 +95,7 @@ private fun ColumnScope.InspectPane(input: String, onInput: (String) -> Unit) {
     if (inspection.suspiciousCount > 0) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "${inspection.suspiciousCount} invisible or direction-changing characters, highlighted below.",
+                inspection.suspiciousCount.let { n -> "$n invisible or direction-changing character${if (n == 1) "" else "s"}, highlighted below." },
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f)
@@ -199,11 +199,22 @@ private fun hexByte(b: Byte) = Integer.toHexString(b.toInt() and 0xFF).uppercase
 
 private fun constantName(s: String) = s.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 
+private val UPPER_WORDS = setOf("CJK", "IPA")
+
+/** Block and script constant as a Unicode-style name: BASIC_LATIN is "Basic Latin", CJK stays upper case. */
+internal fun titleName(s: String): String = s.split('_').joinToString(" ") { w ->
+    when (w) {
+        in UPPER_WORDS -> w
+        "AND" -> "and"
+        else -> w.lowercase().replaceFirstChar { it.uppercase() }
+    }
+}
+
 internal fun inspect(s: String): Inspection {
     val cps = s.codePoints().toArray()
     val scripts = cps.asSequence().filter { Character.isLetter(it) }.map { Character.UnicodeScript.of(it) }
         .filter { it != Character.UnicodeScript.COMMON && it != Character.UnicodeScript.INHERITED }
-        .distinct().map { constantName(it.name) }.toList()
+        .distinct().map { titleName(it.name) }.toList()
     return Inspection(cps, cps.count(::isInvisibleOrBidi), scripts)
 }
 
@@ -224,7 +235,7 @@ internal fun codePointInfo(cp: Int): CodePointInfo {
         hex = "U+$hex",
         name = Character.getName(cp) ?: "Unassigned",
         category = if (category == null) "Unknown category" else "${category.code} ${constantName(category.name)}",
-        block = Character.UnicodeBlock.of(cp)?.let { constantName(it.toString()) } ?: "No block",
+        block = Character.UnicodeBlock.of(cp)?.let { titleName(it.toString()) } ?: "No block",
         utf8 = utf8.joinToString(" ") { hexByte(it) },
         utf16 = text.map { Integer.toHexString(it.code).uppercase().padStart(4, '0') }.joinToString(" "),
         escapes = text.map { "\\u" + Integer.toHexString(it.code).uppercase().padStart(4, '0') }.joinToString("") +

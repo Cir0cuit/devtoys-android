@@ -10,10 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.ui.NumberedTextField
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -183,13 +181,11 @@ class LineToolsTool : Tool {
             }
             PaneHeader(outputTitle(result), copyText = output)
             NumberedTextField(output, { }, modifier = Modifier.weight(1f).fillMaxWidth(), readOnly = true)
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
-/** Read-only dropdown over key-to-label pairs. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Dropdown over key-to-label pairs; [selected] and [onSelect] use the key. */
 @Composable
 private fun OptionDropdown(
     label: String,
@@ -197,30 +193,13 @@ private fun OptionDropdown(
     options: List<Pair<String, String>>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }, modifier = modifier) {
-        OutlinedTextField(
-            value = options.firstOrNull { it.first == selected }?.second.orEmpty(),
-            onValueChange = {},
-            readOnly = true,
-            singleLine = true,
-            label = { Text(label, maxLines = 1) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { (key, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(key); expanded = false })
-            }
-        }
-    }
-}
+) = SelectField(label, options.firstOrNull { it.first == selected } ?: options.first(), options, { onSelect(it.first) }, modifier) { it.second }
 
 internal data class LineResult(val output: String, val inputLines: Int, val outputLines: Int, val filtered: Boolean, val error: String? = null)
 
-private fun outputTitle(r: LineResult?): String {
-    if (r == null) return "Output"
+internal fun outputTitle(r: LineResult?): String {
+    // On an error there is no output to count; the error shows under the input field.
+    if (r == null || r.error != null) return "Output"
     val count = when {
         r.filtered -> "${r.outputLines} of ${r.inputLines} lines"
         r.outputLines == 1 -> "1 line"
@@ -234,7 +213,34 @@ internal fun computeLines(input: String, operation: String, options: LineOptions
     val out = applyLineOperation(input, operation, options)
     LineResult(out, countLines(input), countLines(out), operation == "Filter")
 } catch (e: PatternSyntaxException) {
-    LineResult("", countLines(input), 0, false, "Invalid regex: ${e.description}. Escape special characters such as ( [ . * with \\.")
+    LineResult("", countLines(input), 0, false, "Invalid regex: ${regexErrorDescription(e)}. Escape special characters such as ( [ . * with \\.")
+}
+
+/** The parser's description, except for an unclosed '[', which Java and ICU report as an illegal or reversed range. */
+internal fun regexErrorDescription(e: PatternSyntaxException): String =
+    if (hasUnclosedClass(e.pattern.orEmpty())) "Missing ] to close the character class" else e.description
+
+private fun hasUnclosedClass(p: String): Boolean {
+    var depth = 0
+    var i = 0
+    while (i < p.length) {
+        when (p[i]) {
+            '\\' -> if (p.startsWith("\\Q", i)) {
+                val end = p.indexOf("\\E", i + 2)
+                if (end < 0) return depth > 0
+                i = end + 1
+            } else i++
+            '[' -> {
+                depth++
+                // A ']' right after '[' or '[^' is a literal member, not the end of the class.
+                if (p.getOrNull(i + 1) == '^') i++
+                if (p.getOrNull(i + 1) == ']') i++
+            }
+            ']' -> if (depth > 0) depth--
+        }
+        i++
+    }
+    return depth > 0
 }
 
 /** Number of lines; a final line break ends the last line instead of starting a new one. */

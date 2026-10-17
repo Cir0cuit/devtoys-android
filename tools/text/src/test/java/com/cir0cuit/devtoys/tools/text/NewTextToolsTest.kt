@@ -177,4 +177,40 @@ class FindReplaceTest {
         assertNotNull(findAndReplace("abc", "(a)", "$2", ReplaceOptions(regex = true)).error)
         assertNull(findAndReplace("abc", "", "x", ReplaceOptions()).error)
     }
+
+    @Test fun invalidReplacementIsReportedWithoutAMatch() {
+        val regex = ReplaceOptions(regex = true)
+        assertNotNull(findAndReplace("xyz", "a", "a $", regex).error)
+        assertNotNull(findAndReplace("xyz", "(a)", "$2", regex).error)
+        assertNotNull(findAndReplace("", "(?<n>a)", "\${m}", regex).error)
+        val ok = findAndReplace("xyz", "(a)", "[$1]", regex)
+        assertNull(ok.error)
+        assertEquals("xyz", ok.text)
+        assertEquals(0, ok.count)
+        assertNull(findAndReplace("xyz", "a", "a $", ReplaceOptions()).error)
+    }
+}
+
+class TextToolFixesTest {
+    @Test fun topWordsAlignCounts() {
+        assertEquals("hello  2\ncafé   1", topWordsText(listOf("hello" to 2, "café" to 1)))
+    }
+
+    @Test fun blockAndScriptNamesKeepTitleCase() {
+        assertEquals("Basic Latin", titleName(Character.UnicodeBlock.of('a'.code).toString()))
+        assertEquals("General Punctuation", titleName(Character.UnicodeBlock.of(0x200B).toString()))
+        assertEquals("CJK Unified Ideographs", titleName("CJK_UNIFIED_IDEOGRAPHS"))
+        assertEquals("Halfwidth and Fullwidth Forms", titleName("HALFWIDTH_AND_FULLWIDTH_FORMS"))
+        assertEquals("Old Italic", titleName(Character.UnicodeScript.OLD_ITALIC.name))
+    }
+
+    @Test fun replacementHintKeepsDoubleBackslashTogether() {
+        val error = findAndReplace("abc", "b", "a $", ReplaceOptions(regex = true)).error!!
+        assertTrue(error, error.endsWith("\\" + Char(0x2060) + "\\."))
+    }
+
+    @Test fun lineOutputTitleHasNoCountOnError() {
+        assertEquals("Output", outputTitle(computeLines("a\nb", "Filter", LineOptions(pattern = "a(", regex = true))))
+        assertEquals("Output, 1 of 2 lines", outputTitle(computeLines("a\nb", "Filter", LineOptions(pattern = "a"))))
+    }
 }
