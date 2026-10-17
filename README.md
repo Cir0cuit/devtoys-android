@@ -1,8 +1,26 @@
+<div align="center">
+
+<img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="96" alt="">
+
 # DevToys for Android
 
-57 offline developer utilities for Android: encoders, formatters, converters, generators, crypto and network tools in one app.
+**57 offline developer tools in one app**
+
+Decode a JWT, check a subnet, format JSON or generate a UUID on your phone,
+without pasting your data into a website.
+
+[![CI](https://github.com/Cir0cuit/devtoys-android/actions/workflows/ci.yml/badge.svg)](https://github.com/Cir0cuit/devtoys-android/actions/workflows/ci.yml)
+![Kotlin](https://img.shields.io/badge/kotlin-2.0-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-lightgrey.svg)
+![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
+
+[**Download**](https://github.com/Cir0cuit/devtoys-android/releases/latest) · 57 tools · no network access
 
 ![DevToys for Android](docs/images/hero.jpg)
+
+</div>
+
+---
 
 ## Why
 
@@ -127,7 +145,9 @@ A developer, IT admin or tinkerer often needs to decode a JWT, check a subnet, f
 
 ## Install
 
-Download the latest APK from [GitHub Releases](https://github.com/Cir0cuit/devtoys-android/releases) and open it on your device. You may need to allow installs from your browser or file manager. Requires Android 8.0 (API 26) or newer.
+Download `DevToys-<version>.apk` from the [latest release](https://github.com/Cir0cuit/devtoys-android/releases/latest) and open it on your device. You may need to allow installs from your browser or file manager. Requires Android 8.0 (API 26) or newer. Each release lists the APK's SHA-256 checksum in `SHA256SUMS.txt`.
+
+Updates are published as new releases. Installing a newer APK over the old one keeps your favorites and settings.
 
 DevToys is no longer published on Google Play.
 
