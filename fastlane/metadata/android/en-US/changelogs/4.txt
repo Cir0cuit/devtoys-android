@@ -1,0 +1,7 @@
+- Fix CSV Viewer and other tools whose panes collapsed and did not display properly
+- Dropdowns now match their field's width, open below it and show the selected option
+- The keyboard closes when a tool opens from search
+- Results show at once when a tool opens
+- Clearer error messages with line and column, and invalid fields are outlined in red
+- YAML follows the 1.2 core schema
+- Better search ranking, and many smaller fixes across all tools
