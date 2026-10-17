@@ -1,0 +1,21 @@
+<p>DevToys puts 57 developer tools on your phone and keeps your data there. Decode a JWT, check a subnet, format JSON or generate a UUID without pasting anything into a website. Everything runs on the device, and the app has no network access.</p>
+
+<p><b>Converters:</b> timestamps and date math, cron parser and builder, number bases, units, a math evaluator with hex and bitwise operators, JSON to typed models, YAML ↔ JSON, XML ↔ JSON, CSV viewer.</p>
+
+<p><b>Encoders and decoders:</b> Base64, Base32/58/85/36, URL, HTML entities, hex, GZip/Zlib/Deflate, ROT13 and classic ciphers, JWT decode/verify/sign, Basic auth headers.</p>
+
+<p><b>Formatters:</b> JSON, XML with XPath, SQL.</p>
+
+<p><b>Generators:</b> UUID v1–v7, ULID, NanoID, Snowflake and KSUID, passwords and passphrases, QR codes and 12 barcode formats with a scanner for photos, Lorem Ipsum.</p>
+
+<p><b>Cryptography:</b> hashes and checksums for text and files, HMAC, TOTP/HOTP, AES text encryption, RSA and EC key pairs as PEM, SSH or JWK, X.509 certificate decoder.</p>
+
+<p><b>Text:</b> case converter, line tools, text and JSON diff, list comparer, regex tester, find and replace, string escaping, text statistics, Unicode inspector, Markdown editor with PDF export, semver compare.</p>
+
+<p><b>Network and system:</b> CIDR calculator, IPv4/IPv6 converter, MAC vendor lookup, chmod calculator, well-known ports, HTTP status codes and headers, MIME types, cheatsheets, device information.</p>
+
+<p><b>Graphics:</b> color converter, palette generator, WCAG contrast checker, image ↔ Base64.</p>
+
+<p>Share text, images or files to DevToys from other apps, or open .json, .xml, .yaml, .csv, .sql, .md, .pem, .gz and other files from a file manager. Search, favorites, recently used tools, light, dark and AMOLED themes, accent colors with dynamic color, and a high-contrast mode.</p>
+
+<p>No ads, no subscriptions, no analytics, no telemetry, no crash reporting. DevToys does not request the INTERNET permission.</p>

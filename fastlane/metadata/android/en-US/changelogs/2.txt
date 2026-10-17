@@ -1,0 +1,2 @@
+- Store listing metadata for F-Droid
+- Release APKs no longer carry Google's encrypted dependency metadata block

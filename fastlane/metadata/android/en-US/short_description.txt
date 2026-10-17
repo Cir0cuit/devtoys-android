@@ -1,0 +1,1 @@
+57 offline developer tools: JSON, JWT, Base64, QR codes, hashes, regex and more
