@@ -19,6 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Check the tag matches versionName
+        run: |
+          version=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' app/build.gradle.kts)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match versionName $version in app/build.gradle.kts."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Decode signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -65,10 +74,10 @@ jobs:
           bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$bt/apksigner" verify --verbose --print-certs "$apk"
           mkdir -p dist
-          cp "$apk" "dist/devtoys-$TAG.apk"
-          (cd dist && sha256sum "devtoys-$TAG.apk" > "devtoys-$TAG.apk.sha256")
+          cp "$apk" "dist/DevToys-$VERSION.apk"
+          (cd dist && sha256sum "DevToys-$VERSION.apk" > SHA256SUMS.txt)
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag
+        run: gh release create "$TAG" dist/* --title "DevToys $VERSION" --generate-notes --verify-tag
