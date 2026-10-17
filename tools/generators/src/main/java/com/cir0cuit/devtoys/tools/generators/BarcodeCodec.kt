@@ -22,7 +22,7 @@ import java.util.EnumMap
 
 /** Barcode symbologies the generator can write; [quiet] is the recommended quiet zone in modules. */
 internal enum class BarcodeKind(val format: BarcodeFormat, val label: String, val is2D: Boolean, val quiet: Int, val sample: String) {
-    QR(BarcodeFormat.QR_CODE, "QR code", true, 4, "https://devtoys.app"),
+    QR(BarcodeFormat.QR_CODE, "QR code", true, 4, "https://github.com/Cir0cuit/devtoys-android"),
     DATA_MATRIX(BarcodeFormat.DATA_MATRIX, "Data Matrix", true, 2, "DevToys"),
     AZTEC(BarcodeFormat.AZTEC, "Aztec", true, 2, "DevToys"),
     PDF_417(BarcodeFormat.PDF_417, "PDF417", true, 2, "DevToys"),
