@@ -5,11 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Picture
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -161,7 +164,7 @@ class MarkdownTool : Tool {
                 val text = input
                 scope.launch {
                     val ok = withContext(Dispatchers.Default) {
-                        try { writeHeadlessPdf(context, text, uri) } catch (e: Exception) { false }
+                        try { writeHeadlessPdf(context, text, uri) } catch (e: Exception) { Log.e("MarkdownTool", "PDF export failed", e); false }
                     }
                     toast(if (ok) "Exported PDF" else "Could not export the PDF. Try another location.")
                 }
@@ -386,6 +389,7 @@ class MarkdownTool : Tool {
         val pdfContext = context.createConfigurationContext(config)
 
         val textView = TextView(pdfContext)
+        textView.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) // setText relayout needs params
         textView.setTextColor(Color.BLACK)
         textView.setBackgroundColor(Color.WHITE)
 
@@ -396,11 +400,23 @@ class MarkdownTool : Tool {
         markwon(pdfContext).setMarkdown(textView, renderFakeFootnotes(markdownText))
 
         val a4WidthPoints = 595
-        textView.measure(
-            View.MeasureSpec.makeMeasureSpec(a4WidthPoints, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        textView.layout(0, 0, a4WidthPoints, textView.measuredHeight)
+        fun measure() {
+            textView.measure(
+                View.MeasureSpec.makeMeasureSpec(a4WidthPoints, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            textView.layout(0, 0, a4WidthPoints, textView.measuredHeight)
+        }
+        measure()
+        // Markwon table rows only know their height after they were drawn once (the on-screen preview
+        // re-lays itself out after the first frame). Draw into a pixel-less Picture, then lay out again,
+        // otherwise every row keeps a one-line height and its cells overlap.
+        Picture().apply {
+            textView.draw(beginRecording(a4WidthPoints, textView.measuredHeight.coerceAtLeast(1)))
+            endRecording()
+        }
+        textView.text = textView.text
+        measure()
 
         val a4HeightPoints = 842
         val textLayout = textView.layout ?: return false
