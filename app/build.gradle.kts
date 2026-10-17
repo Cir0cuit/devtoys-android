@@ -17,8 +17,8 @@ android {
         applicationId = "com.cir0cuit.devtoys"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -80,6 +80,8 @@ android {
 
 aboutLibraries {
     configPath = "config"
+    // build timestamp; leaving it out keeps release builds reproducible
+    excludeFields = arrayOf("generated")
 }
 
 dependencies {
