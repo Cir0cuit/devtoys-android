@@ -290,7 +290,7 @@ class MathEvaluatorTool : Tool {
         }
 
         ToolScaffold(descriptor.title, modifier = modifier) {
-            MonoTextField(expr, { expr = it.take(2000) }, "Expression", minLines = 3)
+            MonoTextField(expr, { expr = it.take(2000) }, "Expression", minLines = 3, isError = result?.isFailure == true)
             Text(
                 "Operators: + - * / % ^ (power), & | xor ~ << >>. Functions: sqrt, ln, log, log2, sin, cos, tan, abs, round, min, max.",
                 style = MaterialTheme.typography.bodySmall,

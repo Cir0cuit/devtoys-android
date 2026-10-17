@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,10 +19,6 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +41,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -67,6 +66,8 @@ internal fun searchCheatsheets(sheets: List<Cheatsheet>, query: String): List<Ch
             }.takeIf { it.isNotEmpty() }?.let { CheatCategory("${sheet.title} · ${cat.name}", it) }
         }
     }
+
+private val CHEATSHEET_TITLES = CHEATSHEETS.map { it.title }
 
 class CheatsheetTool : Tool {
     override val descriptor = ToolDescriptor(
@@ -100,13 +101,31 @@ class CheatsheetTool : Tool {
             clipboardManager.setText(AnnotatedString(it))
             confirmCopied(context, "Command")
         }
+        // A new query or sheet starts at its first row, not where the old list was scrolled to.
+        // shownKey survives rotation, so a restored scroll position is kept.
+        val listState = rememberLazyListState()
+        val listKey = "${activeSheet.title}/$q"
+        var shownKey by rememberSaveable { mutableStateOf(listKey) }
+        LaunchedEffect(listKey) {
+            if (listKey != shownKey) {
+                shownKey = listKey
+                listState.scrollToItem(0)
+            }
+        }
 
         ToolScaffold(descriptor.title, modifier = modifier, scrollable = false) {
             SearchField(query, { query = it }, "Search all cheatsheets")
             Spacer(Modifier.height(8.dp))
-            SheetPicker(selected = activeSheet.title, enabled = q.isEmpty(), onSelect = { selected = it })
+            SelectField(
+                "Cheatsheet",
+                selected = if (q.isEmpty()) activeSheet.title else "All sheets",
+                options = CHEATSHEET_TITLES,
+                onSelect = { selected = it },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = q.isEmpty()
+            )
 
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 if (categories.isEmpty()) {
                     item {
                         Text(
@@ -154,32 +173,6 @@ class CheatsheetTool : Tool {
                 onCopy = { copy(fillPlaceholders(command, placeholderValues)); editing = null },
                 onDismiss = { editing = null }
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SheetPicker(selected: String, enabled: Boolean, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded && enabled, onExpandedChange = { if (enabled) expanded = !expanded }) {
-        OutlinedTextField(
-            value = if (enabled) selected else "All sheets",
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            singleLine = true,
-            label = { Text("Cheatsheet") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && enabled) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
-            CHEATSHEETS.forEach { sheet ->
-                DropdownMenuItem(
-                    text = { Text(sheet.title) },
-                    onClick = { onSelect(sheet.title); expanded = false }
-                )
-            }
         }
     }
 }

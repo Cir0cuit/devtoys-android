@@ -80,14 +80,26 @@ class BasicAuthTool : Tool {
         var showPassword by remember { mutableStateOf(false) }
 
         ToolScaffold(descriptor.title, modifier = modifier) {
+            // Above the fields so it does not move when the field count changes.
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("Encode", "Decode").forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = decodeMode == (i == 1),
+                        onClick = { decodeMode = i == 1 },
+                        shape = SegmentedButtonDefaults.itemShape(i, 2)
+                    ) { Text(label, maxLines = 1) }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
             if (decodeMode) {
-                MonoTextField(header, { header = it.take(8192) }, "Authorization header or token", minLines = 3)
+                MonoTextField(header, { header = it.take(8192) }, "Authorization header or token", minLines = 3, isError = header.isNotBlank() && runCatching { parseBasicAuth(header) }.isFailure)
             } else {
                 OutlinedTextField(
                     value = user,
                     onValueChange = { user = it.take(1024) },
                     label = { Text("Username") },
                     singleLine = true,
+                    isError = ':' in user,
                     textStyle = CodeTextStyle,
                     shape = MaterialTheme.shapes.medium,
                     keyboardOptions = KeyboardOptions(autoCorrect = false),
@@ -113,16 +125,6 @@ class BasicAuthTool : Tool {
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
-            Spacer(Modifier.height(16.dp))
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf("Encode", "Decode").forEachIndexed { i, label ->
-                    SegmentedButton(
-                        selected = decodeMode == (i == 1),
-                        onClick = { decodeMode = i == 1 },
-                        shape = SegmentedButtonDefaults.itemShape(i, 2)
-                    ) { Text(label, maxLines = 1) }
-                }
             }
             Spacer(Modifier.height(16.dp))
             if (decodeMode) {

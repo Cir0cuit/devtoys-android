@@ -1,14 +1,11 @@
 package com.cir0cuit.devtoys.tools.reference
 
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Straighten
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
+import com.cir0cuit.devtoys.core.ui.SelectField
 import com.cir0cuit.devtoys.core.ui.ToolScaffold
 import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
@@ -203,29 +201,26 @@ class UnitConverterTool : Tool {
         ToolScaffold(descriptor.title, modifier = modifier) {
             SelectField("Quantity", quantity, QUANTITIES, { quantityName = it.name }, Modifier.fillMaxWidth(), optionLabel = { it.name })
             Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { input = it.take(64) },
-                    label = { Text("Value") },
-                    singleLine = true,
-                    textStyle = CodeTextStyle,
-                    shape = MaterialTheme.shapes.medium,
-                    keyboardOptions = KeyboardOptions(keyboardType = if (isTime) KeyboardType.Ascii else KeyboardType.Decimal, autoCorrect = false),
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                SelectField(
-                    "Unit", unit, quantity.units, { unitSymbol = it.symbol }, Modifier.width(132.dp),
-                    optionLabel = { "${it.symbol}  ${it.name}" }, selectedLabel = { it.symbol }
-                )
-            }
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it.take(64) },
+                label = { Text("Value") },
+                singleLine = true,
+                isError = input.isNotBlank() && value == null,
+                textStyle = CodeTextStyle,
+                keyboardOptions = KeyboardOptions(keyboardType = if (isTime) KeyboardType.Ascii else KeyboardType.Decimal, autoCorrect = false),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            // Full width: the menu is as wide as the field, and "Kibit/s  Kibibits per second" needs the room.
+            SelectField("Unit", unit, quantity.units, { unitSymbol = it.symbol }, Modifier.fillMaxWidth(), optionLabel = { "${it.symbol}  ${it.name}" })
             Spacer(Modifier.height(16.dp))
             when {
                 input.isBlank() -> Unit
                 value == null -> ErrorText(
                     if (isTime) "\"$input\" is not a number or an ISO 8601 duration. Enter something like 90 or PT1H30M."
-                    else "\"$input\" is not a number. Enter something like 1.5 or 2e3."
+                    // No "2e3" here: the decimal keypad has no e key.
+                    else "\"$input\" is not a number. Enter something like 1.5 or -40."
                 )
                 else -> {
                     val rows = quantity.units.filter { it !== unit || isoSeconds != null }

@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
@@ -155,11 +156,14 @@ class HttpStatusTool : Tool {
     @Composable
     override fun Content(modifier: Modifier) {
         var tab by rememberSaveable { mutableIntStateOf(0) }
-        var query by rememberSaveable { mutableStateOf("") }
+        // One query per tab: a status code searched on Status would leave Methods and Headers empty.
+        var queries by rememberSaveable { mutableStateOf(List(TABS.size) { "" }) }
+        val query = queries[tab]
         var collapsed by rememberSaveable { mutableStateOf(listOf<String>()) }
         var detailCode by rememberSaveable { mutableStateOf<Int?>(null) }
         val clipboardManager = LocalClipboardManager.current
         val context = LocalContext.current
+        val focusManager = LocalFocusManager.current
         val copy: (String, String) -> Unit = { text, what ->
             clipboardManager.setText(AnnotatedString(text))
             confirmCopied(context, what)
@@ -179,7 +183,7 @@ class HttpStatusTool : Tool {
             Spacer(Modifier.height(8.dp))
             SearchField(
                 query,
-                { query = it },
+                { value -> queries = queries.mapIndexed { i, old -> if (i == tab) value else old } },
                 when (tab) { 0 -> "Search by code or name"; 1 -> "Search methods"; else -> "Search headers" }
             )
             LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -199,7 +203,8 @@ class HttpStatusTool : Tool {
                                 items(statuses, key = { it.code }) { status ->
                                     StatusRow(
                                         status,
-                                        onOpen = { detailCode = status.code },
+                                        // Drops the keyboard, which would otherwise cover the bottom of the sheet.
+                                        onOpen = { focusManager.clearFocus(); detailCode = status.code },
                                         onCopy = { copy("${status.code} ${status.name}", "Status") }
                                     )
                                 }
