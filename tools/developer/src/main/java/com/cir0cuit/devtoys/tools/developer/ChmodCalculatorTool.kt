@@ -54,7 +54,8 @@ class ChmodCalculatorTool : Tool {
             if (tab == 1) {
                 UmaskMode(umaskText, { umaskText = it }, desiredText, { desiredText = it })
             } else {
-            MonoTextField(
+            val invalid = text.isNotBlank() && parseChmodLiteral(text) == null && applyChmodExpression(text.trim(), base, fileType == "d") == null
+            MonoInputField(
                 value = text,
                 onValueChange = { t ->
                     text = t
@@ -68,10 +69,9 @@ class ChmodCalculatorTool : Tool {
                     }
                 },
                 label = "Octal, symbolic or expression",
-                minLines = 1,
-                maxLines = 1
+                isError = invalid
             )
-            if (text.isNotBlank() && parseChmodLiteral(text) == null && applyChmodExpression(text.trim(), base, fileType == "d") == null) {
+            if (invalid) {
                 Text(
                     "Enter octal like 755 or 4755, symbolic like rwxr-xr-x or -rw-r--r--, or an expression like u+x,go-w.",
                     color = MaterialTheme.colorScheme.error,
@@ -120,9 +120,9 @@ class ChmodCalculatorTool : Tool {
 
 @Composable
 private fun UmaskMode(umaskText: String, onUmask: (String) -> Unit, desiredText: String, onDesired: (String) -> Unit) {
-    MonoTextField(umaskText, onUmask, "umask", minLines = 1, maxLines = 1)
-    Spacer(Modifier.height(16.dp))
     val umask = umaskText.trim().takeIf { it.length in 1..4 && it.all { c -> c in '0'..'7' } }?.toInt(8)?.and(DIR_BASE)
+    MonoInputField(umaskText, onUmask, "umask", isError = umask == null)
+    Spacer(Modifier.height(16.dp))
     if (umask == null) {
         NetError("Enter the umask as octal digits, like 022 or 077.")
     } else {
@@ -136,9 +136,9 @@ private fun UmaskMode(umaskText: String, onUmask: (String) -> Unit, desiredText:
         )
     }
     Spacer(Modifier.height(16.dp))
-    MonoTextField(desiredText, onDesired, "Desired mode, like 644 or rwxr-x---", minLines = 1, maxLines = 1)
-    Spacer(Modifier.height(16.dp))
     val desired = parseChmodLiteral(desiredText)?.first?.and(DIR_BASE)
+    MonoInputField(desiredText, onDesired, "Desired mode, like 644 or rwxr-x---", isError = desired == null)
+    Spacer(Modifier.height(16.dp))
     if (desired == null) {
         NetError("Enter the desired mode as octal like 644 or symbolic like rw-r--r--.")
     } else {

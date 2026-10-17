@@ -29,7 +29,7 @@ class IpConverterTool : Tool {
         val addr = remember(input) { parseIpFlexible(input) }
 
         ToolScaffold(descriptor.title, modifier = modifier) {
-            MonoTextField(input, { input = it }, "IP address, integer or 0x hex", minLines = 1, maxLines = 1)
+            MonoInputField(input, { input = it }, "IP address, integer or 0x hex", isError = addr == null)
             Spacer(Modifier.height(16.dp))
             if (addr == null) {
                 NetError("Enter an IPv4 address like 192.168.1.1, an IPv6 address like 2001:db8::1, or a number like 3232235777 or 0xC0A80101.")

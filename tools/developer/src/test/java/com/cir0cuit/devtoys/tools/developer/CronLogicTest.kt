@@ -24,6 +24,22 @@ class CronLogicTest {
         assertTrue(runCatching { parseCron(CronDialect.UNIX, "0 0 9 * * *") }.isFailure)
     }
 
+    @Test fun rangeErrorNamesFieldAndRange() {
+        val unix = cronRangeError(CronDialect.UNIX, "61 * * * *")!!
+        assertEquals("Minute", unix.field)
+        assertEquals("Minute 61 is out of range. Unix allows 0-59.", unix.message)
+        assertEquals("Hour 99 is out of range. cron4j allows 0-23.", cronRangeError(CronDialect.CRON4J, "* 99 * * *")!!.message)
+        assertEquals("Day of week", cronRangeError(CronDialect.CRON4J, "0 0 * * 1-7")!!.field)
+        assertEquals("Second", cronRangeError(CronDialect.SPRING, "60 0 0 * * *")!!.field)
+        assertEquals("Day of week", cronRangeError(CronDialect.QUARTZ, "0 0 0 ? * 0")!!.field)
+        assertEquals("Month", cronRangeError(CronDialect.AWS, "cron(0 0 ? 13 * *)")!!.field)
+        assertEquals("Hour", cronRangeError(CronDialect.AWS, buildCron(CronDialect.AWS, "0", "*", "99", "*", "*", "*"))!!.field)
+        // Steps and nth weekday are not field values.
+        assertEquals(null, cronRangeError(CronDialect.UNIX, "*/90 * * * *"))
+        assertEquals(null, cronRangeError(CronDialect.QUARTZ, "0 0 0 ? * 2#5"))
+        assertEquals(null, cronRangeError(CronDialect.UNIX, "5 * * * *"))
+    }
+
     @Test fun builderAddsQuestionMarkForQuartz() {
         assertEquals("0 0 9 * * ?", buildCron(CronDialect.QUARTZ, "0", "0", "9", "*", "*", "*"))
         assertEquals("0 0 9 ? * MON-FRI", buildCron(CronDialect.QUARTZ, "0", "0", "9", "*", "*", "MON-FRI"))

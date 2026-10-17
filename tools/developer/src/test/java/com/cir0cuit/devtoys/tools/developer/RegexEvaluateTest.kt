@@ -41,6 +41,9 @@ class RegexEvaluateTest {
     @Test fun invalidPatternReportsError() {
         assertTrue(regexMatchText("(", "x").startsWith("Error:"))
         assertTrue(regexMatchText("[a-", "x").startsWith("Error:"))
+        assertTrue(runRegex(RegexMode.MATCH, "(", "x", 0).isError)
+        assertTrue(runRegex(RegexMode.REPLACE, "a", "a", 0, "$3").isError)
+        assertFalse(runRegex(RegexMode.MATCH, "a", "b", 0).isError)
     }
 
     @Test fun emptyMatchesAreReportedAtEveryPosition() {

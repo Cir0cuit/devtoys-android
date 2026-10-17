@@ -4,6 +4,7 @@ import com.cronutils.descriptor.CronDescriptor
 import com.cronutils.model.Cron
 import com.cronutils.model.CronType
 import com.cronutils.model.definition.CronDefinitionBuilder
+import com.cronutils.model.field.CronFieldName
 import com.cronutils.parser.CronParser
 import java.time.ZoneId
 import java.util.Locale
@@ -35,6 +36,32 @@ internal fun normalizeCron(dialect: CronDialect, expr: String): String {
 internal fun parseCron(dialect: CronDialect, expr: String): Pair<Cron, String> {
     val cron = CronParser(CronDefinitionBuilder.instanceDefinitionFor(dialect.type)).parse(normalizeCron(dialect, expr))
     return cron to CronDescriptor.instance(Locale.ENGLISH).describe(cron)
+}
+
+/** A number outside its field's range; [field] matches the Builder field label. */
+internal class CronFieldError(val field: String, val message: String)
+
+private val FIELD_LABELS = mapOf(
+    CronFieldName.SECOND to "Second", CronFieldName.MINUTE to "Minute", CronFieldName.HOUR to "Hour",
+    CronFieldName.DAY_OF_MONTH to "Day of month", CronFieldName.MONTH to "Month", CronFieldName.DAY_OF_WEEK to "Day of week",
+    CronFieldName.YEAR to "Year", CronFieldName.DAY_OF_YEAR to "Day of year"
+)
+
+/** The first number outside the range [dialect] allows for its field, or null when every number is in range. */
+internal fun cronRangeError(dialect: CronDialect, expr: String): CronFieldError? {
+    val defs = CronDefinitionBuilder.instanceDefinitionFor(dialect.type).fieldDefinitions.sortedBy { it.fieldName.order }
+    val fields = normalizeCron(dialect, expr).split(Regex("\\s+"))
+    fields.zip(defs).forEachIndexed { i, (value, def) ->
+        // AWS has no seconds: the leading 0 comes from normalizeCron.
+        if (dialect == CronDialect.AWS && i == 0) return@forEachIndexed
+        val range = def.constraints.startRange..def.constraints.endRange
+        val label = FIELD_LABELS.getValue(def.fieldName)
+        // Values only: the step after / and the nth after # are not field values.
+        val bad = value.split(",").flatMap { it.substringBefore('/').substringBefore('#').split('-') }
+            .mapNotNull { it.toIntOrNull() }.firstOrNull { it !in range }
+        if (bad != null) return CronFieldError(label, "$label $bad is out of range. ${dialect.label} allows ${range.first}-${range.last}.")
+    }
+    return null
 }
 
 /**

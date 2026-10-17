@@ -65,8 +65,12 @@ class RegexTesterTool : Tool {
             slowNotice.cancel()
         }
 
+        // A failed run marks the replacement only when the pattern itself compiles.
+        val patternCompiles = remember(regex, flags) { runCatching { compileRegex(regex, flags) }.isSuccess }
+        val replacementError = outcome.isError && patternCompiles && mode == RegexMode.REPLACE
+
         ToolScaffold(descriptor.title, modifier = modifier) {
-            MonoTextField(regex, { regex = it }, "Pattern", minLines = 1)
+            MonoInputField(regex, { regex = it }, "Pattern", isError = outcome.isError && !replacementError, maxLines = Int.MAX_VALUE)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Java regex engine. Lookbehind and possessive quantifiers differ from JS and PCRE.",
@@ -114,17 +118,21 @@ class RegexTesterTool : Tool {
             }
             if (mode == RegexMode.REPLACE) {
                 Spacer(Modifier.height(8.dp))
-                MonoTextField(replacement, { replacement = it }, "Replace with (\$1, \${name}, \\\$)", minLines = 1)
+                MonoInputField(replacement, { replacement = it }, "Replace with (\$1, \${name}, \\\$)", isError = replacementError, maxLines = Int.MAX_VALUE)
             }
             Spacer(Modifier.height(16.dp))
             if (mode == RegexMode.MATCH && outcome.hits.isNotEmpty() && input.length <= MAX_HIGHLIGHT_CHARS) {
                 HighlightedText(input, outcome.hits)
                 Spacer(Modifier.height(16.dp))
             }
-            OutputPanel(
-                outcome.text,
-                label = when (mode) { RegexMode.MATCH -> "Matches"; RegexMode.REPLACE -> "Result"; RegexMode.SPLIT -> "Parts" }
-            )
+            if (outcome.isError) {
+                Text(outcome.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            } else {
+                OutputPanel(
+                    outcome.text,
+                    label = when (mode) { RegexMode.MATCH -> "Matches"; RegexMode.REPLACE -> "Result"; RegexMode.SPLIT -> "Parts" }
+                )
+            }
         }
     }
 }

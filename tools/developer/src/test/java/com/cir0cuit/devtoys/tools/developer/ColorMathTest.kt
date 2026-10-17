@@ -101,4 +101,17 @@ class ColorMathTest {
             assertTrue(v.label, kotlin.math.abs(redOf(gray) - 128) <= 2 && kotlin.math.abs(blueOf(gray) - 128) <= 2)
         }
     }
+
+    @Test fun monochromaticStaysClearOfBlackAndWhite() {
+        for (v in listOf(0f, 0.1f, 0.3f, 0.5f, 0.55f, 0.6f, 0.8f, 0.9f, 1f)) {
+            val base = floatArrayOf(270f, 0.5f, v)
+            val mono = monochromatic(base)
+            assertEquals(4, mono.size)
+            assertTrue(mono.any { it === base })
+            val others = mono.filter { it !== base }.map { it[2] }
+            assertTrue("v=$v: $others", others.all { it in 0.149f..0.951f && kotlin.math.abs(it - v) > 0.1f })
+            assertEquals(mono.map { it[2] }.sortedDescending(), mono.map { it[2] })
+            assertTrue(mono.all { it[0] == 270f && it[1] == 0.5f })
+        }
+    }
 }

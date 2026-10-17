@@ -112,46 +112,13 @@ class ColorPaletteTool : Tool {
                 tri2Hsv[0] = (hsv[0] + 240f) % 360f
             }
 
-            val mono1Hsv = hsv.clone()
-            val mono2Hsv = hsv.clone()
-            val mono3Hsv = hsv.clone()
-            if (hsv[1] == 0f) {
-                if (hsv[2] > 0.5f) {
-                    mono1Hsv[2] = (hsv[2] - 0.25f).coerceAtLeast(0f)
-                    mono2Hsv[2] = (hsv[2] - 0.5f).coerceAtLeast(0f)
-                    mono3Hsv[2] = (hsv[2] - 0.75f).coerceAtLeast(0f)
-                } else {
-                    mono1Hsv[2] = (hsv[2] + 0.25f).coerceAtMost(1f)
-                    mono2Hsv[2] = (hsv[2] + 0.5f).coerceAtMost(1f)
-                    mono3Hsv[2] = (hsv[2] + 0.75f).coerceAtMost(1f)
-                }
-            } else {
-                if (hsv[2] > 0.5f) {
-                    mono1Hsv[1] = (hsv[1] - 0.3f).coerceAtLeast(0f)
-                    mono1Hsv[2] = (hsv[2] + 0.1f).coerceAtMost(1f)
-                    
-                    mono2Hsv[1] = (hsv[1] + 0.2f).coerceAtMost(1f)
-                    mono2Hsv[2] = (hsv[2] - 0.3f).coerceAtLeast(0f)
-                    
-                    mono3Hsv[1] = (hsv[1] + 0.4f).coerceAtMost(1f)
-                    mono3Hsv[2] = (hsv[2] - 0.6f).coerceAtLeast(0f)
-                } else {
-                    mono1Hsv[1] = (hsv[1] + 0.3f).coerceAtMost(1f)
-                    mono1Hsv[2] = (hsv[2] - 0.1f).coerceAtLeast(0f)
-                    
-                    mono2Hsv[1] = (hsv[1] - 0.2f).coerceAtLeast(0f)
-                    mono2Hsv[2] = (hsv[2] + 0.3f).coerceAtMost(1f)
-                    
-                    mono3Hsv[1] = (hsv[1] - 0.4f).coerceAtLeast(0f)
-                    mono3Hsv[2] = (hsv[2] + 0.6f).coerceAtMost(1f)
-                }
-            }
+            val mono = monochromatic(hsv).map { if (it === hsv) baseColorInt else Color.HSVToColor(it) }
 
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(bottom = 16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 PaletteRow("Complementary", listOf(baseColorInt, Color.HSVToColor(compHsv)), copy, useAsBase)
                 PaletteRow("Analogous", listOf(Color.HSVToColor(ana2Hsv), baseColorInt, Color.HSVToColor(ana1Hsv)), copy, useAsBase)
                 PaletteRow("Triadic", listOf(baseColorInt, Color.HSVToColor(tri1Hsv), Color.HSVToColor(tri2Hsv)), copy, useAsBase)
-                PaletteRow("Monochromatic", listOf(Color.HSVToColor(mono1Hsv), baseColorInt, Color.HSVToColor(mono2Hsv), Color.HSVToColor(mono3Hsv)), copy, useAsBase)
+                PaletteRow("Monochromatic", mono, copy, useAsBase)
                 if (imageSwatches.isNotEmpty()) {
                     PaletteRow("From image", imageSwatches.map { it.second }, copy, useAsBase)
                 }

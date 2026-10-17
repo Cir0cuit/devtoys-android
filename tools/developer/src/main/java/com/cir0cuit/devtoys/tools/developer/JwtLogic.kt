@@ -2,6 +2,7 @@ package com.cir0cuit.devtoys.tools.developer
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
@@ -133,10 +134,8 @@ internal fun verifyJwt(token: String, keyText: String, secretIsBase64: Boolean):
 
 /** Builds a signed compact token. [headerJson] gets alg set from [alg]. */
 internal fun signJwt(headerJson: String, payloadJson: String, alg: String, keyText: String, secretIsBase64: Boolean): String {
-    val header = runCatching { JSONObject(headerJson.ifBlank { "{}" }) }
-        .getOrElse { throw IllegalArgumentException("The header is not a JSON object. Check braces and quotes.") }
-    val payload = runCatching { JSONObject(payloadJson) }
-        .getOrElse { throw IllegalArgumentException("The payload is not a JSON object. Check braces and quotes.") }
+    val header = jsonObjectOnly(headerJson.ifBlank { "{}" }, "header")
+    val payload = jsonObjectOnly(payloadJson, "payload")
     header.put("alg", alg)
     if (!header.has("typ")) header.put("typ", "JWT")
     fun part(o: JSONObject) = b64urlEncode(o.toString().replace("\\/", "/").toByteArray(Charsets.UTF_8))
@@ -155,9 +154,16 @@ internal fun signJwt(headerJson: String, payloadJson: String, alg: String, keyTe
 
 /** Returns [payloadJson] with [claim] set, pretty printed. */
 internal fun setClaim(payloadJson: String, claim: String, value: Long): String {
-    val o = runCatching { JSONObject(payloadJson.ifBlank { "{}" }) }
-        .getOrElse { throw IllegalArgumentException("The payload is not a JSON object. Check braces and quotes.") }
-    return jwtPrettyJson(o.put(claim, value))
+    return jwtPrettyJson(jsonObjectOnly(payloadJson.ifBlank { "{}" }, "payload").put(claim, value))
+}
+
+/** One JSON object and nothing after it; JSONObject(String) alone ignores trailing text like "{}xx". */
+private fun jsonObjectOnly(text: String, what: String): JSONObject {
+    val tokener = JSONTokener(text)
+    val o = runCatching { JSONObject(tokener) }
+        .getOrElse { throw IllegalArgumentException("The $what is not a JSON object. Check braces and quotes.") }
+    require(tokener.nextClean() == 0.toChar()) { "The $what has text after the closing brace. Remove it." }
+    return o
 }
 
 private fun b64url(s: String): ByteArray = Base64.getUrlDecoder().decode(s.trimEnd('='))

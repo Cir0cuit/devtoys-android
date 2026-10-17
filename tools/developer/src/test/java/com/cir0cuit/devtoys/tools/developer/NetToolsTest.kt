@@ -191,4 +191,13 @@ class NetToolsTest {
         assertNull(applyChmodExpression("u+x,", m644))
         assertNull(applyChmodExpression("z+x", m644))
     }
+
+    @Test fun bitGroupsBreakOnlyAfterSeparators() {
+        assertEquals("11111111.\u200B11100000", wrapAtSeparators("11111111.11100000"))
+        assertEquals("0101:\u200B1010", wrapAtSeparators("0101:1010"))
+        assertEquals("192.168.1.1", wrapAtSeparators("192.168.1.1"))
+        assertEquals("fe80:\u200B:\u200B1", wrapAtSeparators("fe80::1"))
+        assertEquals("2001:\u200B0db8:\u200B0000:\u200B7334", wrapAtSeparators("2001:0db8:0000:7334"))
+        assertEquals("1.2.3", wrapAtSeparators("1.2.3"))
+    }
 }

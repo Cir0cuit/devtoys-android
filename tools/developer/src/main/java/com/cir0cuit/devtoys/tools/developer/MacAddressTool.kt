@@ -48,7 +48,7 @@ class MacAddressTool : Tool {
         }
 
         ToolScaffold(descriptor.title, modifier = modifier) {
-            MonoTextField(input, { input = it.take(MAX_MAC_INPUT) }, "MAC address, EUI-64 IPv6 or pasted text", minLines = 1, maxLines = 8)
+            MonoInputField(input, { input = it.take(MAX_MAC_INPUT) }, "MAC address, EUI-64 IPv6 or pasted text", isError = input.isNotBlank() && parsed.macs.isEmpty(), maxLines = 8)
             Spacer(modifier = Modifier.height(16.dp))
             when {
                 parsed.macs.isEmpty() -> Text(

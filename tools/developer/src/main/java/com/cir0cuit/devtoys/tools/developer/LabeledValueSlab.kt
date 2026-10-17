@@ -22,6 +22,20 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
 import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
 
+private val BIT_GROUPS = Regex("[01]+([.:][01]+)+")
+private val HEX_COLON_GROUPS = Regex("[0-9a-fA-F]*(:+[0-9a-fA-F]*)+")
+
+/**
+ * Dotted or colon-grouped binary (`11111111.11100000`) and colon-grouped hex (IPv6, MAC) wrap only
+ * between groups: a zero-width space after each separator gives the line breaker a place to break,
+ * so it does not cut inside a group or before a colon.
+ */
+internal fun wrapAtSeparators(value: String): String = when {
+    BIT_GROUPS.matches(value) -> value.replace(".", ".\u200B").replace(":", ":\u200B")
+    HEX_COLON_GROUPS.matches(value) -> value.replace(":", ":\u200B")
+    else -> value
+}
+
 /** One recessed slab of label-over-value rows, each value selectable and copyable. */
 @Composable
 internal fun LabeledValueSlab(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) {
@@ -32,7 +46,7 @@ internal fun LabeledValueSlab(rows: List<Pair<String, String>>, modifier: Modifi
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
                         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        SelectionContainer { Text(value, style = CodeTextStyle) }
+                        SelectionContainer { Text(wrapAtSeparators(value), style = CodeTextStyle) }
                     }
                     IconButton(onClick = { clipboard.setText(AnnotatedString(value)) }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", modifier = Modifier.size(20.dp))

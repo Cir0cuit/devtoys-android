@@ -114,4 +114,13 @@ class JwtLogicTest {
     @Test fun setClaimAddsTimestamp() {
         assertEquals(1700000000L, JSONObject(setClaim("""{"sub":"x"}""", "exp", 1700000000L)).getLong("exp"))
     }
+
+    @Test fun rejectsTextAfterTheJsonObject() {
+        val reason = runCatching { signJwt("{}", """{"sub":"x"}xx""", "HS256", "secret", false) }.exceptionOrNull()?.message.orEmpty()
+        assertTrue(reason, reason.contains("after the closing brace"))
+        assertTrue(runCatching { signJwt("""{"kid":"a"} x""", "{}", "HS256", "secret", false) }.isFailure)
+        assertTrue(runCatching { setClaim("""{"sub":"x"}}""", "exp", 1L) }.isFailure)
+        // Whitespace around the object is fine.
+        assertTrue(runCatching { signJwt("{}", "  {\"sub\":\"x\"}\n ", "HS256", "secret", false) }.isSuccess)
+    }
 }

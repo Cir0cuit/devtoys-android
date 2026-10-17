@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import com.cir0cuit.devtoys.core.ui.MonoTextField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -31,6 +32,18 @@ internal fun NetChoiceRow(options: List<String>, selected: Int, onSelect: (Int) 
         }
     }
 }
+
+/** Single-line MonoTextField; [isError] marks the field whose value caused the error shown below it. */
+@Composable
+internal fun MonoInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    isError: Boolean,
+    modifier: Modifier = Modifier,
+    minLines: Int = 1,
+    maxLines: Int = 1
+) = MonoTextField(value, onValueChange, label, modifier, minLines, maxLines, isError)
 
 @Composable
 internal fun NetError(message: String, modifier: Modifier = Modifier) {

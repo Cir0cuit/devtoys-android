@@ -70,8 +70,19 @@ class JsonToTypesTest {
 
     @Test fun kotlinBasicTypes() {
         val out = gen("{\"id\":1,\"name\":\"x\",\"ok\":true,\"big\":12345678901,\"nothing\":null}")
-        assertTrue(out, out.startsWith("@Serializable\ndata class Root(\n"))
-        assertHas(out, "    val id: Int,\n", "    val name: String,\n", "    val ok: Boolean,\n", "    val big: Long,\n", "    val nothing: Any? = null,\n")
+        assertTrue(out, out.startsWith("import kotlinx.serialization.Serializable\nimport kotlinx.serialization.json.JsonElement\n\n@Serializable\ndata class Root(\n"))
+        assertHas(out, "    val id: Int,\n", "    val name: String,\n", "    val ok: Boolean,\n", "    val big: Long,\n", "    val nothing: JsonElement? = null,\n")
+    }
+
+    @Test fun kotlinxUsesJsonTreeTypesNotAny() {
+        val out = gen("{\"email\":null,\"meta\":{},\"user_id\":1}")
+        assertHas(out, "import kotlinx.serialization.SerialName\n", "import kotlinx.serialization.json.JsonObject\n",
+            "val email: JsonElement? = null,", "val meta: JsonObject,")
+        assertFalse(out, out.contains("Any"))
+        assertEquals("import kotlinx.serialization.json.JsonElement\n\ntypealias Root = List<JsonElement>", gen("[1,\"a\"]"))
+        // Moshi and Gson handle Any themselves.
+        assertHas(gen("{\"meta\":{}}", opts = TypeOptions(kotlinLib = KotlinLib.MOSHI)), "val meta: Map<String, Any?>,")
+        assertFalse(gen("{\"meta\":{}}", opts = TypeOptions(kotlinLib = KotlinLib.GSON)).contains("import"))
     }
 
     @Test fun kotlinAnnotationsOnlyWhenRenamed() {
@@ -108,7 +119,7 @@ class JsonToTypesTest {
 
     @Test fun kotlinEmptyObjectAndRootArray() {
         val out = gen("{\"meta\":{},\"tags\":[]}")
-        assertHas(out, "val meta: Map<String, Any?>,", "val tags: List<Any>,")
+        assertHas(out, "val meta: JsonObject,", "val tags: List<JsonElement>,")
         assertFalse(out, Regex("data class \\w+\\(\\s*\\)").containsMatchIn(out))
         assertHas(gen("[{\"id\":1}]"), "data class RootItem(", "typealias Root = List<RootItem>")
         assertEquals("typealias Root = List<Int>", gen("[1,2]"))
@@ -170,7 +181,24 @@ class JsonToTypesTest {
     }
 
     @Test fun invalidJsonExplainsTheProblem() {
-        assertTrue(convertJsonToTypes("{", TypeLang.KOTLIN, TypeOptions()).startsWith("Not valid JSON"))
-        assertEquals("", convertJsonToTypes("  ", TypeLang.KOTLIN, TypeOptions()))
+        val bad = convertJsonToTypes("{", TypeLang.KOTLIN, TypeOptions())
+        assertEquals("", bad.code)
+        assertTrue(bad.error.orEmpty().startsWith("Not valid JSON"))
+        assertEquals(TypesResult(), convertJsonToTypes("  ", TypeLang.KOTLIN, TypeOptions()))
+    }
+
+    @Test fun trailingTextIsRejected() {
+        val bad = convertJsonToTypes("{\"a\": 1}x", TypeLang.KOTLIN, TypeOptions())
+        assertEquals("", bad.code)
+        assertTrue(bad.error.orEmpty(), bad.error.orEmpty().startsWith("Not valid JSON: line 1, column 9:"))
+        assertEquals("", convertJsonToTypes("{\"a\": 1}\n  ", TypeLang.KOTLIN, TypeOptions()).error.orEmpty())
+    }
+
+    @Test fun errorsGiveLineAndColumnWithoutEchoingInput() {
+        val error = convertJsonToTypes("{\n  \"secret\": 1,\n  \"b\": 2", TypeLang.KOTLIN, TypeOptions()).error.orEmpty()
+        assertTrue(error, error.startsWith("Not valid JSON: line 3,"))
+        assertFalse(error, error.contains("secret"))
+        // Android's message format.
+        assertEquals("line 2, column 3: Unterminated object.", jsonErrorAt("{\n  \"a\"", "Unterminated object at character 5 of {\n  \"a\""))
     }
 }

@@ -60,10 +60,10 @@ class CidrCalculatorTool : Tool {
 
 @Composable
 private fun SubnetMode(input: String, onInput: (String) -> Unit, tests: String, onTests: (String) -> Unit) {
-    MonoTextField(input, onInput, "Address and prefix or netmask", minLines = 1, maxLines = 1)
-    Spacer(Modifier.height(16.dp))
     val parsed = remember(input) { runCatching { parseCidr(input) } }
     val c = parsed.getOrNull()
+    MonoInputField(input, onInput, "Address and prefix or netmask", isError = c == null)
+    Spacer(Modifier.height(16.dp))
     if (c == null) {
         NetError(parsed.exceptionOrNull()?.message ?: "Not a valid CIDR range.")
         return
@@ -118,27 +118,31 @@ private fun SplitMode(
     hosts: String, onHosts: (String) -> Unit
 ) {
     val context = LocalContext.current
-    MonoTextField(input, onInput, "Network to split", minLines = 1, maxLines = 1)
+    val network = remember(input) { runCatching { parseCidr(input) } }
+    // Computed in composition like Subnet, so the first frame already shows the subnets; capped at MAX_SUBNETS.
+    val result = remember(network, byHosts, newPrefix, hosts) {
+        network.mapCatching { c ->
+            if (byHosts) {
+                val needs = hosts.split(',', ' ', ';', '\n').filter { it.isNotBlank() }.map {
+                    it.trim().toIntOrNull()?.takeIf { n -> n > 0 } ?: throw IllegalArgumentException("\"${it.trim()}\" is not a host count. Enter whole numbers above 0.")
+                }
+                require(needs.size <= MAX_SUBNETS) { "Enter at most $MAX_SUBNETS host counts." }
+                splitByHosts(c, needs).let { it to BigInteger.valueOf(it.size.toLong()) }
+            } else {
+                val p = newPrefix.trim().removePrefix("/").toIntOrNull() ?: throw IllegalArgumentException("Enter the new prefix length as a number, like 26.")
+                splitByPrefix(c, p, MAX_SUBNETS)
+            }
+        }
+    }
+    MonoInputField(input, onInput, "Network to split", isError = network.isFailure)
     Spacer(Modifier.height(16.dp))
     NetChoiceRow(listOf("By prefix", "By host count"), if (byHosts) 1 else 0, { onByHosts(it == 1) })
     Spacer(Modifier.height(8.dp))
-    if (byHosts) MonoTextField(hosts, onHosts, "Hosts per subnet, like 50, 20, 10", minLines = 1, maxLines = 1)
-    else MonoTextField(newPrefix, onNewPrefix, "New prefix length", minLines = 1, maxLines = 1)
+    val splitError = network.isSuccess && result.isFailure
+    if (byHosts) MonoInputField(hosts, onHosts, "Hosts per subnet, like 50, 20, 10", isError = splitError)
+    else MonoInputField(newPrefix, onNewPrefix, "New prefix length", isError = splitError)
     Spacer(Modifier.height(16.dp))
 
-    val result = rememberNetResult(input, byHosts, newPrefix, hosts) {
-        val c = parseCidr(input)
-        if (byHosts) {
-            val needs = hosts.split(',', ' ', ';', '\n').filter { it.isNotBlank() }.map {
-                it.trim().toIntOrNull()?.takeIf { n -> n > 0 } ?: throw IllegalArgumentException("\"${it.trim()}\" is not a host count. Enter whole numbers above 0.")
-            }
-            require(needs.size <= MAX_SUBNETS) { "Enter at most $MAX_SUBNETS host counts." }
-            splitByHosts(c, needs).let { it to BigInteger.valueOf(it.size.toLong()) }
-        } else {
-            val p = newPrefix.trim().removePrefix("/").toIntOrNull() ?: throw IllegalArgumentException("Enter the new prefix length as a number, like 26.")
-            splitByPrefix(c, p, MAX_SUBNETS)
-        }
-    } ?: return
     val (subnets, total) = result.getOrElse { NetError(it.message ?: "Could not split this network."); return }
 
     Text(
@@ -170,23 +174,29 @@ internal fun subnetsCsv(subnets: List<Subnet>): String =
 
 @Composable
 private fun RangeMode(start: String, onStart: (String) -> Unit, end: String, onEnd: (String) -> Unit) {
-    MonoTextField(start, onStart, "Start address", minLines = 1, maxLines = 1)
-    Spacer(Modifier.height(8.dp))
-    MonoTextField(end, onEnd, "End address", minLines = 1, maxLines = 1)
-    Spacer(Modifier.height(16.dp))
     val result = rememberNetResult(start, end) {
         val a = parseIp(start) ?: throw IllegalArgumentException("The start is not an IPv4 or IPv6 address.")
         val b = parseIp(end) ?: throw IllegalArgumentException("The end is not an IPv4 or IPv6 address.")
         rangeToCidrs(a, b).joinToString("\n")
-    } ?: return
+    }
+    // A bad address marks its own field; a family mismatch or reversed range marks both.
+    val failed = result?.isFailure == true
+    val startBad = failed && parseIp(start) == null
+    val endBad = failed && parseIp(end) == null
+    MonoInputField(start, onStart, "Start address", isError = startBad || (failed && !endBad))
+    Spacer(Modifier.height(8.dp))
+    MonoInputField(end, onEnd, "End address", isError = endBad || (failed && !startBad))
+    Spacer(Modifier.height(16.dp))
+    if (result == null) return
     result.fold({ OutputPanel(it, label = "CIDR blocks") }, { NetError(it.message ?: "Could not convert this range.") })
 }
 
 @Composable
 private fun MergeMode(list: String, onList: (String) -> Unit, tests: String, onTests: (String) -> Unit) {
-    MonoTextField(list, onList, "CIDR list, one per line", minLines = 4, maxLines = 12)
+    val parsed = rememberNetResult(list) { parseCidrList(list).let { it to mergeCidrs(it) } }
+    MonoInputField(list, onList, "CIDR list, one per line", isError = parsed?.isFailure == true, minLines = 4, maxLines = 12)
     Spacer(Modifier.height(16.dp))
-    val parsed = rememberNetResult(list) { parseCidrList(list).let { it to mergeCidrs(it) } } ?: return
+    if (parsed == null) return
     val (blocks, merged) = parsed.getOrElse { NetError(it.message ?: "Could not read the list."); return }
     OutputPanel(merged.joinToString("\n"), label = "Merged (${blocks.size} in, ${merged.size} out)")
     Spacer(Modifier.height(16.dp))

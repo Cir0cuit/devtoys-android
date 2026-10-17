@@ -308,6 +308,25 @@ internal fun colorFormats(c: Int): List<Pair<String, String>> {
     )
 }
 
+// ---------- Monochromatic ----------
+
+private const val MONO_MIN_V = 0.15f
+private const val MONO_MAX_V = 0.95f
+
+/**
+ * [hsv] plus three colors of the same hue and saturation, lightest first. The new values are spread
+ * between [MONO_MIN_V] and [MONO_MAX_V], lighter or darker depending on where the base sits, so none
+ * collapses to black or white or repeats the base.
+ */
+internal fun monochromatic(hsv: FloatArray): List<FloatArray> {
+    val v = hsv[2]
+    val lighter = ((MONO_MAX_V - v) / (MONO_MAX_V - MONO_MIN_V) * 3).roundToInt().coerceIn(0, 3)
+    val darker = 3 - lighter
+    val values = List(lighter) { i -> v + (MONO_MAX_V - v) * (i + 1) / lighter } +
+        List(darker) { i -> v - (v - MONO_MIN_V) * (i + 1) / darker }
+    return (values.map { floatArrayOf(hsv[0], hsv[1], it) } + listOf(hsv)).sortedByDescending { it[2] }
+}
+
 // ---------- Tint and shade scale ----------
 
 internal val SCALE_STEPS = listOf(50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950)

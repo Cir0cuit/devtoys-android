@@ -1,7 +1,9 @@
 package com.cir0cuit.devtoys.tools.developer
 
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.util.IdentityHashMap
 
 // ---- Inferred model: one pass over the JSON, shared by every language emitter. ----
@@ -121,7 +123,8 @@ private val RESERVED_TYPE_NAMES = setOf(
     "Any", "Unit", "Nothing", "String", "Char", "Boolean", "Bool", "Byte", "Short", "Int", "Integer", "Long",
     "Float", "Double", "Number", "Array", "List", "Map", "Set", "Pair", "Triple", "Result", "Object", "Date",
     "Error", "Type", "Self", "Optional", "Option", "Vec", "Box", "Record", "Dictionary", "Function", "Null",
-    "None", "True", "False", "Value", "SerialName", "Serializable", "Json", "JsonClass", "Codable", "CodingKeys"
+    "None", "True", "False", "Value", "SerialName", "Serializable", "Json", "JsonClass", "JsonElement", "JsonObject",
+    "Codable", "CodingKeys"
 )
 
 internal class TypeModel(val root: JType, val classes: List<Pair<String, TObj>>, val names: Map<TObj, String>)
@@ -193,8 +196,11 @@ private fun TypeSyntax.render(t: JType, names: Map<TObj, String>): String = when
 
 private val JAVA_BOX = mapOf("boolean" to "Boolean", "int" to "Integer", "long" to "Long", "double" to "Double")
 
-private fun syntaxFor(lang: TypeLang): TypeSyntax = when (lang) {
-    TypeLang.KOTLIN -> TypeSyntax("Boolean", "Int", "Long", "Double", "String", "Any", "Map<String, Any?>", { "List<$it>" }, { if (it.endsWith("?")) it else "$it?" })
+private fun syntaxFor(lang: TypeLang, opts: TypeOptions): TypeSyntax = when (lang) {
+    // kotlinx.serialization has no serializer for Any, so unknown values use its JSON tree types.
+    TypeLang.KOTLIN -> if (opts.kotlinLib == KotlinLib.KOTLINX)
+        TypeSyntax("Boolean", "Int", "Long", "Double", "String", "JsonElement", "JsonObject", { "List<$it>" }, { if (it.endsWith("?")) it else "$it?" })
+    else TypeSyntax("Boolean", "Int", "Long", "Double", "String", "Any", "Map<String, Any?>", { "List<$it>" }, { if (it.endsWith("?")) it else "$it?" })
     TypeLang.TYPESCRIPT -> TypeSyntax("boolean", "number", "number", "number", "string", "unknown", "Record<string, unknown>",
         { if (' ' in it) "($it)[]" else "$it[]" }, { if (it == "unknown" || it.endsWith("| null")) it else "$it | null" })
     TypeLang.SWIFT -> TypeSyntax("Bool", "Int", "Int", "Double", "String", "AnyCodable", "[String: AnyCodable]", { "[$it]" }, { if (it.endsWith("?")) it else "$it?" })
@@ -290,26 +296,51 @@ private fun props(obj: TObj, lang: TypeLang, syntax: TypeSyntax, model: TypeMode
 
 private const val MAX_DEPTH = 512
 
-/** Generated code, or a message saying what is wrong with the JSON. */
-internal fun convertJsonToTypes(input: String, lang: TypeLang, opts: TypeOptions): String =
-    if (input.isBlank()) "" else try {
-        if (maxDepth(input) > MAX_DEPTH) "JSON is nested too deeply. Keep it under $MAX_DEPTH levels."
-        else generateTypes(input, lang, opts)
+/** Generated [code], or an [error] saying what is wrong with the JSON. */
+internal data class TypesResult(val code: String = "", val error: String? = null)
+
+internal fun convertJsonToTypes(input: String, lang: TypeLang, opts: TypeOptions): TypesResult =
+    if (input.isBlank()) TypesResult() else try {
+        if (maxDepth(input) > MAX_DEPTH) TypesResult(error = "JSON is nested too deeply. Keep it under $MAX_DEPTH levels.")
+        else TypesResult(generateTypes(input, lang, opts))
     } catch (e: StackOverflowError) {
-        "JSON is nested too deeply to convert."
+        TypesResult(error = "JSON is nested too deeply to convert.")
     } catch (e: Exception) {
-        "Not valid JSON: ${e.message ?: "check brackets, quotes and commas"}"
+        TypesResult(error = "Not valid JSON: ${e.message ?: "check brackets, quotes and commas"}")
     }
 
 /** Generates type declarations for [json] (an object or array text) in [lang]. Throws on invalid JSON. */
-internal fun generateTypes(json: String, lang: TypeLang, opts: TypeOptions = TypeOptions()): String {
-    val trimmed = json.trim()
-    val value: Any = if (trimmed.startsWith("[")) JSONArray(trimmed) else JSONObject(trimmed)
-    return emitTypes(buildTypeModel(inferType(value)), lang, opts)
+internal fun generateTypes(json: String, lang: TypeLang, opts: TypeOptions = TypeOptions()): String =
+    emitTypes(buildTypeModel(inferType(parseJsonRoot(json))), lang, opts)
+
+/** The object or array in [json]; anything after it is an error. Error messages give the line and column, never the input. */
+internal fun parseJsonRoot(json: String): Any {
+    val tokener = JSONTokener(json)
+    val value = try {
+        tokener.nextValue().also { if (tokener.nextClean() != '\u0000') throw tokener.syntaxError("Unexpected text after the end of the JSON") }
+    } catch (e: JSONException) {
+        throw IllegalArgumentException(jsonErrorAt(json, e.message.orEmpty()))
+    }
+    require(value is JSONObject || value is JSONArray) { "the top level must be an object or an array." }
+    return value
+}
+
+/**
+ * Turns an org.json message into "line L, column C: problem.". Android's message ends in
+ * "at character N of <input>", the JVM artifact's in "at N [character C line L]"; both carry the offset N.
+ */
+internal fun jsonErrorAt(json: String, message: String): String {
+    val m = Regex("""^(.*?) at (?:character )?(\d+)""", RegexOption.DOT_MATCHES_ALL).find(message)
+        ?: return "check brackets, quotes and commas."
+    // N counts the characters read, so the offending one is at N - 1.
+    val offset = (m.groupValues[2].toInt() - 1).coerceIn(0, json.length)
+    val lineStart = json.lastIndexOf('\n', offset - 1) + 1
+    val line = json.substring(0, offset).count { it == '\n' } + 1
+    return "line $line, column ${offset - lineStart + 1}: ${m.groupValues[1].trimEnd('.')}."
 }
 
 internal fun emitTypes(model: TypeModel, lang: TypeLang, opts: TypeOptions): String {
-    val syntax = syntaxFor(lang)
+    val syntax = syntaxFor(lang, opts)
     val rootIsClass = model.root is TObj && model.names[model.root] == "Root"
     val rootType = syntax.render(model.root, model.names)
     val out = StringBuilder()
@@ -320,6 +351,17 @@ internal fun emitTypes(model: TypeModel, lang: TypeLang, opts: TypeOptions): Str
     when (lang) {
         TypeLang.KOTLIN -> {
             val kw = if (opts.mutable) "var" else "val"
+            if (opts.kotlinLib == KotlinLib.KOTLINX) {
+                val types = blocks.flatMap { (_, ps) -> ps.map { it.type } } + rootType
+                fun uses(type: String) = types.any { Regex("\\b$type\\b").containsMatchIn(it) }
+                val imports = listOfNotNull(
+                    "import kotlinx.serialization.SerialName".takeIf { anyRenamed },
+                    "import kotlinx.serialization.Serializable".takeIf { blocks.isNotEmpty() },
+                    "import kotlinx.serialization.json.JsonElement".takeIf { uses("JsonElement") },
+                    "import kotlinx.serialization.json.JsonObject".takeIf { uses("JsonObject") }
+                )
+                if (imports.isNotEmpty()) header(*imports.toTypedArray())
+            }
             blocks.forEach { (name, ps) ->
                 when (opts.kotlinLib) {
                     KotlinLib.KOTLINX -> out.append("@Serializable\n")

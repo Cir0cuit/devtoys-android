@@ -12,8 +12,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +85,7 @@ class CronTool : Tool {
         }
 
         val parsed = remember(activeCron, dialect) { runCatching { parseCron(dialect, activeCron) }.getOrNull() }
+        val rangeError = remember(parsed, activeCron, dialect) { if (parsed == null) cronRangeError(dialect, activeCron) else null }
         val runs = remember(parsed, nextExecutionsCount, now) {
             parsed?.let { (cron, _) ->
                 runCatching {
@@ -119,20 +123,20 @@ class CronTool : Tool {
                 parts.chunked(2).forEachIndexed { i, pair ->
                     if (i > 0) Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { CronPartField(it, Modifier.weight(1f)) }
+                        pair.forEach { CronPartField(it, rangeError?.field == it.label, Modifier.weight(1f)) }
                         if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
             Spacer(Modifier.height(16.dp))
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SelectField("Dialect", dialect, CronDialect.entries, { dialect = it }, Modifier.weight(1f)) { it.label }
-                OutlinedButton(onClick = { picking = true }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Public, contentDescription = "Time zone", modifier = Modifier.size(ButtonDefaults.IconSize))
-                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    Text(cityName(zone), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            // Full width: "AWS EventBridge" does not fit a half-width field.
+            SelectField("Dialect", dialect, CronDialect.entries, { dialect = it }, Modifier.fillMaxWidth()) { it.label }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { picking = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Public, contentDescription = "Time zone", modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text(cityName(zone), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.height(8.dp))
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -155,7 +159,7 @@ class CronTool : Tool {
                 activeCron.isEmpty() -> OutputPanel("", label = "Meaning", isCopyable = false)
                 activeCron.equals("@reboot", ignoreCase = true) -> OutputPanel("Once, when the machine starts. There are no scheduled runs.", label = "Meaning")
                 parsed == null -> Text(
-                    "Not a valid ${dialect.label} cron expression. Use ${dialect.hint}, or pick another dialect.",
+                    rangeError?.message ?: "Not a valid ${dialect.label} cron expression. Use ${dialect.hint}, or pick another dialect.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -211,14 +215,17 @@ private fun CopyAsButton(dialect: CronDialect, expr: String, zone: ZoneId) {
 
 /** Compact preset-or-type field for one cron part. */
 @Composable
-private fun CronPartField(part: CronPart, modifier: Modifier) {
+private fun CronPartField(part: CronPart, isError: Boolean, modifier: Modifier) {
     var menu by remember { mutableStateOf(false) }
-    Box(modifier) {
+    var fieldWidth by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    Box(modifier.onSizeChanged { fieldWidth = it.width }) {
         OutlinedTextField(
             value = part.value,
             onValueChange = part.onChange,
             label = { Text(part.label, maxLines = 1) },
             singleLine = true,
+            isError = isError,
             textStyle = CodeTextStyle,
             shape = MaterialTheme.shapes.medium,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrect = false),
@@ -227,11 +234,17 @@ private fun CronPartField(part: CronPart, modifier: Modifier) {
             },
             modifier = Modifier.fillMaxWidth()
         )
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+        // Same rules as SelectField: as wide as the field, capped height (the menu scrolls), current value in primary.
+        DropdownMenu(
+            expanded = menu,
+            onDismissRequest = { menu = false },
+            modifier = Modifier.width(with(density) { fieldWidth.toDp() }).heightIn(max = 280.dp)
+        ) {
             part.presets.forEach { (name, code) ->
+                val current = code == part.value.trim()
                 DropdownMenuItem(
-                    text = { Text(name) },
-                    trailingIcon = { Text(code, style = CodeTextStyle, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    text = { Text(name, color = if (current) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                    trailingIcon = { Text(code, style = CodeTextStyle, color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) },
                     onClick = { part.onChange(code); menu = false }
                 )
             }
@@ -263,7 +276,10 @@ private fun RunsPanel(title: String, runs: List<String>, empty: String, count: I
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         NEXT_RUN_COUNTS.forEach { n ->
-                            DropdownMenuItem(text = { Text("$n") }, onClick = { onCount(n); menu = false })
+                            DropdownMenuItem(
+                                text = { Text("$n", color = if (n == count) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                                onClick = { onCount(n); menu = false }
+                            )
                         }
                     }
                 }

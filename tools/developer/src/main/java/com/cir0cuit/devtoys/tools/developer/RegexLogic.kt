@@ -19,8 +19,8 @@ internal val REGEX_FLAGS = listOf(
 internal data class GroupHit(val label: String, val start: Int, val end: Int, val value: String?)
 internal data class MatchHit(val start: Int, val end: Int, val value: String, val groups: List<GroupHit>)
 
-/** Text output plus the match positions used for highlighting. */
-internal data class RegexRun(val text: String, val hits: List<MatchHit> = emptyList())
+/** Text output plus the match positions used for highlighting; [isError] when [text] explains a failure. */
+internal data class RegexRun(val text: String, val hits: List<MatchHit> = emptyList(), val isError: Boolean = false)
 
 internal fun compileRegex(pattern: String, flags: Int): Pattern =
     if (flags and Pattern.LITERAL != 0) Pattern.compile(Pattern.quote(pattern), flags and Pattern.LITERAL.inv())
@@ -74,7 +74,7 @@ internal fun runRegex(mode: RegexMode, pattern: String, input: String, flags: In
         RegexMode.REPLACE -> try {
             RegexRun(compileRegex(pattern, flags).matcher(input).replaceAll(replacement))
         } catch (e: IndexOutOfBoundsException) {
-            RegexRun("Error: ${e.message}. Use \$1 to \$n for groups in the pattern, or \\\$ for a literal dollar sign.")
+            RegexRun("Error: ${e.message}. Use \$1 to \$n for groups in the pattern, or \\\$ for a literal dollar sign.", isError = true)
         }
         RegexMode.SPLIT -> {
             val parts = compileRegex(pattern, flags).split(input, -1)
@@ -85,7 +85,7 @@ internal fun runRegex(mode: RegexMode, pattern: String, input: String, flags: In
 } catch (e: Throwable) {
     if (e is kotlinx.coroutines.CancellationException) throw e
     // StackOverflowError from heavy backtracking lands here too.
-    RegexRun("Error: ${e.message ?: e.javaClass.simpleName}")
+    RegexRun("Error: ${e.message ?: e.javaClass.simpleName}", isError = true)
 }
 
 /** Match-mode text, kept for tests. */

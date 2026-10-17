@@ -39,7 +39,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.CodeTextStyle
-import com.cir0cuit.devtoys.core.ui.MonoTextField
 
 // Shared by ColorPickerTool, ColorPaletteTool and ContrastCheckerTool.
 
@@ -72,6 +71,7 @@ internal fun ColorHeader(
         onTextChange(value)
         parseColor(value)?.let(onColor)
     }
+    val invalid = text.isNotBlank() && parseColor(text) == null
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -81,7 +81,7 @@ internal fun ColorHeader(
                     .background(color, MaterialTheme.shapes.medium)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
             )
-            MonoTextField(value = text, onValueChange = ::accept, label = label, modifier = Modifier.weight(1f), minLines = 1, maxLines = 1)
+            MonoInputField(value = text, onValueChange = ::accept, label = label, isError = invalid, modifier = Modifier.weight(1f))
             IconButton(
                 onClick = {
                     val pasted = clipboard.getText()?.text?.trim().orEmpty()
@@ -93,7 +93,7 @@ internal fun ColorHeader(
                 Icon(Icons.Default.ContentPaste, contentDescription = "Paste $label")
             }
         }
-        if (text.isNotBlank() && parseColor(text) == null) {
+        if (invalid) {
             Text(
                 "Not a color. Use #RRGGBB, rgb(), hsl(), hwb(), oklch() or a CSS color name.",
                 style = MaterialTheme.typography.bodySmall,
