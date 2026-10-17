@@ -16,11 +16,11 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
-import com.google.gson.JsonParser
+import com.google.gson.JsonParseException
 import com.google.gson.JsonPrimitive
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import org.w3c.dom.DOMException
 import org.w3c.dom.Document
 import org.w3c.dom.Element
@@ -30,26 +30,24 @@ class XmlJsonTool : Tool {
     override val descriptor = ToolDescriptor("xml-json", "XML ↔ JSON", "Convert between XML and JSON", Icons.Default.Transform, ToolCategory.CONVERTERS, listOf("xml", "json", "converter", "soap", "rss"))
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
-        var xmlInput by rememberSaveable { mutableStateOf("<book id=\"1\"><title>Dune</title><tag>sf</tag><tag>classic</tag></book>") }
-        var jsonInput by rememberSaveable { mutableStateOf("") }
+        var xmlInput by rememberCappedText("<book id=\"1\"><title>Dune</title><tag>sf</tag><tag>classic</tag></book>")
+        var jsonInput by rememberCappedText("")
         var rootName by rememberSaveable { mutableStateOf("") }
         var toXml by rememberSaveable { mutableStateOf(false) }
-        var output by remember { mutableStateOf("") }
+        var result by remember { mutableStateOf(XmlJsonResult(toXml, "")) }
+        val debounce = rememberDebounce()
         LaunchedEffect(toXml, xmlInput, jsonInput, rootName) {
             val input = if (toXml) jsonInput else xmlInput
             if (input.isBlank()) {
-                output = ""
+                result = XmlJsonResult(toXml, "")
                 return@LaunchedEffect
             }
-            delay(300)
-            output = withContext(Dispatchers.Default) {
-                try {
-                    if (toXml) jsonToXml(input, rootName) else xmlToJson(input)
-                } catch (e: Exception) {
-                    "Error: " + if (toXml) (e.cause?.message ?: e.message ?: "invalid JSON").substringBefore("\nSee ") else xmlErrorMessage(e)
-                }
-            }
+            debounce.await(300)
+            result = withContext(Dispatchers.Default) { convertXmlJson(input, toXml, rootName) }
         }
+        // A result is never shown under the other direction while the next one is pending.
+        val current = result.takeIf { it.toXml == toXml } ?: XmlJsonResult(toXml, "")
+        val output = current.text
         ToolScaffold(descriptor.title, modifier = modifier) {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf("XML to JSON", "JSON to XML").forEachIndexed { i, label ->
@@ -62,7 +60,7 @@ class XmlJsonTool : Tool {
             }
             Spacer(modifier = Modifier.height(16.dp))
             if (toXml) {
-                PasteableInput(jsonInput, { jsonInput = it }, "JSON input")
+                FileInput(jsonInput, { jsonInput = it }, "JSON input")
                 OutlinedTextField(
                     value = rootName,
                     onValueChange = { rootName = it },
@@ -73,11 +71,13 @@ class XmlJsonTool : Tool {
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {
-                PasteableInput(xmlInput, { xmlInput = it }, "XML input")
+                FileInput(xmlInput, { xmlInput = it }, "XML input", mimeTypes = XML_TYPES)
             }
             Spacer(modifier = Modifier.height(8.dp))
-            ResultPanel(output, label = if (toXml) "XML" else "JSON")
-            if (output.isNotEmpty() && !output.startsWith("Error: ")) {
+            if (current.error != null) ErrorText(current.error)
+            else ResultPanel(output, label = if (toXml) "XML" else "JSON")
+            if (output.isNotEmpty()) {
+                OutputActions(output, if (toXml) "converted.xml" else "converted.json", if (toXml) "application/xml" else "application/json")
                 TextButton(onClick = {
                     if (toXml) xmlInput = output else jsonInput = output
                     toXml = !toXml
@@ -89,6 +89,22 @@ class XmlJsonTool : Tool {
             }
         }
     }
+}
+
+/** Converted [text], or an [error] to show instead; [toXml] is the direction it was made for. */
+internal class XmlJsonResult(val toXml: Boolean, val text: String, val error: String? = null)
+
+internal fun convertXmlJson(input: String, toXml: Boolean, rootName: String): XmlJsonResult = try {
+    XmlJsonResult(toXml, if (toXml) jsonToXml(input, rootName) else xmlToJson(input))
+} catch (e: Exception) {
+    val error = when {
+        !toXml -> "Couldn't parse the input. ${xmlErrorMessage(e)}"
+        // Gson reports trailing content as MalformedJsonException, an IOException.
+        e is JsonParseException || e is IOException -> "Couldn't parse the input. ${describeJsonError(e, input)}"
+        // The JSON parsed, but its keys or shape cannot become XML; the message says what to change.
+        else -> e.message ?: "Couldn't convert the JSON."
+    }
+    XmlJsonResult(toXml, "", error)
 }
 
 /**
@@ -133,7 +149,7 @@ private fun xmlElementToJson(element: Element): JsonElement {
  * root element are named "item".
  */
 internal fun jsonToXml(input: String, rootName: String): String {
-    val json = JsonParser.parseString(input)
+    val json = parseJson(input)
     val doc = secureDocumentBuilder().newDocument()
     val name = rootName.trim()
     if (name.isEmpty()) {

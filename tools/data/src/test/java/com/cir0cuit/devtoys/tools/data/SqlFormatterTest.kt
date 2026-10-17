@@ -1,6 +1,8 @@
 package com.cir0cuit.devtoys.tools.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SqlFormatterTest {
@@ -138,5 +140,16 @@ class SqlFormatterTest {
             minifySql("SELECT a, -- c\n  b /* x */ FROM t\nWHERE  x = 'a  b';")
         )
         assertEquals("SELECT a b", minifySql("SELECT a/*x*/b"))
+    }
+
+    @Test
+    fun unterminatedLiteralRunsToTheEndAndIsReported() {
+        assertEquals("select\n  'abc from t where (x", formatSql("select 'abc from t where (x"))
+        assertEquals("select 'a  from", minifySql("select 'a  from"))
+        assertTrue(hasUnterminatedSql("select 'abc from t"))
+        assertTrue(hasUnterminatedSql("select \"a from t"))
+        assertTrue(hasUnterminatedSql("select 'it''s"))
+        assertTrue(hasUnterminatedSql("select 1 /* note"))
+        assertFalse(hasUnterminatedSql("select 'it''s', \"a\", [b] from t /* c */ -- d"))
     }
 }

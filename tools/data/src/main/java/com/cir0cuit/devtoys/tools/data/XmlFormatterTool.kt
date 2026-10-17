@@ -25,7 +25,6 @@ import javax.xml.xpath.XPathFactory
 import java.io.StringReader
 import java.io.StringWriter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.w3c.dom.Document
 import org.w3c.dom.DocumentType
@@ -38,35 +37,38 @@ import org.xml.sax.SAXParseException
 private val XML_LAYOUTS = listOf("2 spaces", "4 spaces", "Minify")
 private val XML_INDENT_UNITS = listOf("  ", "    ", null)
 private const val MAX_XPATH_NODES = 200
+internal val XML_TYPES = arrayOf("text/xml", "application/xml", "text/*", "application/octet-stream")
 
 class XmlFormatterTool : Tool {
     override val descriptor = ToolDescriptor("xml-formatter", "XML Formatter", "Format, minify and query XML with XPath", Icons.Default.IntegrationInstructions, ToolCategory.FORMATTERS, listOf("xml", "format", "minify", "xpath"), accepts = setOf(ShareKind.TEXT), fileTypes = setOf("xml", "xsd", "xsl", "xslt", "svg", "plist"))
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
-        var input by rememberSaveable { mutableStateOf("<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>") }
+        var input by rememberCappedText("<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>")
         OnSharedText { input = it }
         var layout by rememberSaveable { mutableStateOf(0) }
         var xpath by rememberSaveable { mutableStateOf("") }
         var output by remember { mutableStateOf("") }
         var xpathResult by remember { mutableStateOf<XPathResult?>(null) }
+        val debounce = rememberDebounce()
         LaunchedEffect(input, layout) {
             if (input.isEmpty()) {
                 output = ""
                 return@LaunchedEffect
             }
-            delay(300)
+            debounce.await(300)
             output = withContext(Dispatchers.Default) { formatXml(input, XML_INDENT_UNITS[layout]) }
         }
+        val xpathDebounce = rememberDebounce()
         LaunchedEffect(input, xpath) {
             if (input.isEmpty() || xpath.isBlank()) {
                 xpathResult = null
                 return@LaunchedEffect
             }
-            delay(300)
+            xpathDebounce.await(300)
             xpathResult = withContext(Dispatchers.Default) { evaluateXPath(input, xpath) }
         }
         ToolScaffold(descriptor.title, modifier = modifier) {
-            PasteableInput(input, { input = it }, "XML input")
+            FileInput(input, { input = it }, "XML input", mimeTypes = XML_TYPES)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 XML_LAYOUTS.forEachIndexed { i, label ->
                     SegmentedButton(
@@ -98,6 +100,7 @@ class XmlFormatterTool : Tool {
             }
             Spacer(modifier = Modifier.height(16.dp))
             ResultPanel(output, label = if (layout == 2) "Minified XML" else "Formatted XML")
+            if (output.isNotEmpty() && !output.startsWith("Error: ")) OutputActions(output, "formatted.xml", "application/xml")
         }
     }
 }
@@ -123,9 +126,14 @@ internal fun parseXmlDocument(input: String): Document {
     return secureDocumentBuilder().parse(InputSource(StringReader(input)))
 }
 
+// Android's XmlPullParser appends "(position:END_TAG </a>@1:12 in java.io.StringReader@250ebe8)".
+private val PULL_PARSER_POSITION = Regex("""\s*\(position:.*\)\s*$""", RegexOption.DOT_MATCHES_ALL)
+private val PULL_PARSER_END_TAG = Regex("""^expected: /(\S+) read: (\S+)$""")
+
 /** Parser message with the line and column when the parser reports them. */
 internal fun xmlErrorMessage(e: Exception): String {
-    val message = e.message ?: e.javaClass.simpleName
+    val message = (e.message ?: e.javaClass.simpleName).replace(PULL_PARSER_POSITION, "")
+        .replace(PULL_PARSER_END_TAG, "expected </\$1> but found </\$2>")
     return if (e is SAXParseException && e.lineNumber > 0) "Line ${e.lineNumber}, column ${e.columnNumber}: $message" else message
 }
 
@@ -259,7 +267,7 @@ internal fun evaluateXPath(input: String, expression: String): XPathResult? {
         try {
             XPathResult("Result", xpath.evaluate(expression, doc))
         } catch (e2: XPathExpressionException) {
-            val reason = (e2.cause?.message ?: e2.message)?.let { "$it. " } ?: ""
+            val reason = (e2.cause?.message ?: e2.message)?.let { "${it.trimEnd().trimEnd('.')}. " } ?: ""
             XPathResult("", "", "Invalid XPath expression. ${reason}Check the syntax, for example //item[@id='1']/name.")
         }
     }

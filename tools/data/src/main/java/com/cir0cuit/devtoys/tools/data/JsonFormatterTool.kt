@@ -12,7 +12,6 @@ import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 import com.google.gson.JsonElement
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 internal enum class JsonMode(val label: String) { FORMAT("Format"), ESCAPE("Escape"), UNESCAPE("Unescape") }
@@ -31,15 +30,17 @@ internal fun runJsonTool(input: String, mode: JsonMode, indent: JsonIndent, sort
         val text = try { unescapeJsonString(input) } catch (e: Exception) {
             throw IllegalArgumentException("Not a valid JSON string. ${describeJsonError(e)}")
         }
+        // Sorted before it is returned, so the tree view shows the same key order as the text.
         val nested = runCatching { parseJson(text, lenient) }.getOrNull()?.takeIf { it.isJsonObject || it.isJsonArray }
-        if (nested != null) formatJson(nested, indent, sort) to nested else text to null
+            ?.let { if (sort) sortKeys(it) else it }
+        if (nested != null) formatJson(nested, indent) to nested else text to null
     }
     JsonMode.FORMAT -> try {
-        val tree = parseJson(input, lenient)
-        formatJson(tree, indent, sort) to tree
+        val tree = parseJson(input, lenient).let { if (sort) sortKeys(it) else it }
+        formatJson(tree, indent) to tree
     } catch (e: Exception) {
-        val msg = describeJsonError(e)
-        throw IllegalArgumentException(if (lenient || "Lenient" in msg) msg else "$msg Fix it there or turn on Lenient.")
+        val msg = describeJsonError(e, input)
+        throw IllegalArgumentException(if (lenient) msg else "$msg Fix it there, or turn on Lenient to accept comments, single quotes and unquoted keys.")
     }
 }
 
@@ -60,12 +61,13 @@ class JsonFormatterTool : Tool {
         var lenient by rememberSaveable { mutableStateOf(false) }
         var tree by rememberSaveable { mutableStateOf(false) }
         var result by remember { mutableStateOf(JsonResult("")) }
+        val debounce = rememberDebounce()
         LaunchedEffect(input, mode, indent, sort, lenient) {
             if (input.isBlank()) {
                 result = JsonResult("")
                 return@LaunchedEffect
             }
-            delay(300)
+            debounce.await(300)
             result = withContext(Dispatchers.Default) {
                 try {
                     runJsonTool(input, mode, indent, sort, lenient).let { (text, element) -> JsonResult(text, element) }

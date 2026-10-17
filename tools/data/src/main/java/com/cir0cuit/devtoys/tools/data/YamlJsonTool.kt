@@ -12,18 +12,88 @@ import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.DumperOptions
+import org.yaml.snakeyaml.LoaderOptions
+import org.yaml.snakeyaml.constructor.AbstractConstruct
+import org.yaml.snakeyaml.constructor.SafeConstructor
+import org.yaml.snakeyaml.error.YAMLException
+import org.yaml.snakeyaml.nodes.Node
+import org.yaml.snakeyaml.nodes.ScalarNode
+import org.yaml.snakeyaml.nodes.Tag
+import org.yaml.snakeyaml.representer.Representer
+import org.yaml.snakeyaml.resolver.Resolver
 import com.google.gson.JsonElement
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 import java.math.BigInteger
+import java.util.regex.Pattern
 
 private val YAML_TYPES = arrayOf("application/yaml", "application/x-yaml", "text/*", "application/octet-stream")
 
+// YAML 1.2 core schema (https://yaml.org/spec/1.2.2/#1032-tag-resolution).
+private val CORE_BOOL = Pattern.compile("true|True|TRUE|false|False|FALSE")
+private val CORE_INT = Pattern.compile("[-+]?[0-9]+|0o[0-7]+|0x[0-9a-fA-F]+")
+private val CORE_FLOAT = Pattern.compile("[-+]?(?:\\.[0-9]+|[0-9]+(?:\\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN)")
+private val CORE_NULL = Pattern.compile("~|null|Null|NULL|")
+
+/** INT before FLOAT: "12" matches both. */
+private fun Resolver.addCoreSchemaResolvers() {
+    addImplicitResolver(Tag.BOOL, CORE_BOOL, "tTfF")
+    addImplicitResolver(Tag.INT, CORE_INT, "-+0123456789")
+    addImplicitResolver(Tag.FLOAT, CORE_FLOAT, "-+0123456789.")
+    addImplicitResolver(Tag.NULL, CORE_NULL, "~nN\u0000")
+}
+
+/**
+ * Plain scalars typed by the YAML 1.2 core schema instead of SnakeYAML's YAML 1.1 rules: yes/no/on/off,
+ * dates and 1:30 stay strings, 012 is decimal 12. "<<" merge keys still work.
+ */
+private class CoreSchemaResolver : Resolver() {
+    override fun addImplicitResolvers() {
+        addCoreSchemaResolvers()
+        addImplicitResolver(Tag.MERGE, Resolver.MERGE, "<", 10)
+    }
+}
+
+/** YAML 1.1 plus 1.2 core rules, so the dumper quotes every string that either version would read as another type. */
+private class QuotingResolver : Resolver() {
+    override fun addImplicitResolvers() {
+        super.addImplicitResolvers()
+        addCoreSchemaResolvers()
+    }
+}
+
+/** SnakeYAML's int constructor reads 012 as octal and rejects 0o17. */
+internal fun parseCoreInt(s: String): Number {
+    val n = try {
+        when {
+            s.startsWith("0o") -> BigInteger(s.substring(2), 8)
+            s.startsWith("0x") -> BigInteger(s.substring(2), 16)
+            else -> BigInteger(s)
+        }
+    } catch (e: NumberFormatException) {
+        throw YAMLException("\"$s\" is not an integer")
+    }
+    return if (n.bitLength() < 64) n.toLong() else n
+}
+
+private class CoreSchemaConstructor(options: LoaderOptions) : SafeConstructor(options) {
+    init {
+        yamlConstructors[Tag.INT] = object : AbstractConstruct() {
+            override fun construct(node: Node): Any = parseCoreInt((node as ScalarNode).value)
+        }
+    }
+}
+
+private fun coreSchemaYaml(): Yaml {
+    val loaderOptions = LoaderOptions()
+    val dumperOptions = DumperOptions()
+    return Yaml(CoreSchemaConstructor(loaderOptions), Representer(dumperOptions), dumperOptions, loaderOptions, CoreSchemaResolver())
+}
+
 /** All "---" documents; several become a JSON array. */
 internal fun yamlToJson(input: String, indent: JsonIndent, sort: Boolean): String {
-    val docs = Yaml().loadAll(input).toList()
+    val docs = coreSchemaYaml().loadAll(input).toList()
     val tree = when (docs.size) {
         0 -> return ""
         1 -> yamlToJsonElement(docs[0])
@@ -35,11 +105,12 @@ internal fun yamlToJson(input: String, indent: JsonIndent, sort: Boolean): Strin
 /** With [split], a top-level array becomes one YAML document per item. */
 internal fun jsonToYaml(input: String, indent: Int, sort: Boolean, split: Boolean): String {
     val tree = parseJson(input).let { if (sort) sortKeys(it) else it }
-    val yaml = Yaml(DumperOptions().apply {
+    val options = DumperOptions().apply {
         defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
         this.indent = indent
         isPrettyFlow = true
-    })
+    }
+    val yaml = Yaml(SafeConstructor(LoaderOptions()), Representer(options), options, QuotingResolver())
     return if (split && tree.isJsonArray) yaml.dumpAll(tree.asJsonArray.map { jsonToPlain(it) }.iterator())
     else yaml.dump(jsonToPlain(tree))
 }
@@ -56,19 +127,22 @@ class YamlJsonTool : Tool {
         var yamlIndent by rememberSaveable { mutableStateOf(2) }
         var sort by rememberSaveable { mutableStateOf(false) }
         var split by rememberSaveable { mutableStateOf(false) }
-        var output by remember { mutableStateOf("") }
+        // Tagged with its direction, so a result is never shown under the other direction while the next one is pending.
+        var result by remember { mutableStateOf(toYaml to "") }
+        val output = if (result.first == toYaml) result.second else ""
         val input = if (toYaml) jsonInput else yamlInput
+        val debounce = rememberDebounce()
         LaunchedEffect(toYaml, input, jsonIndent, yamlIndent, sort, split) {
             if (input.isBlank()) {
-                output = ""
+                result = toYaml to ""
                 return@LaunchedEffect
             }
-            delay(300)
-            output = withContext(Dispatchers.Default) {
+            debounce.await(300)
+            result = toYaml to withContext(Dispatchers.Default) {
                 try {
                     if (toYaml) jsonToYaml(input, yamlIndent, sort, split) else yamlToJson(input, jsonIndent, sort)
                 } catch (e: Exception) {
-                    "Error: " + if (toYaml) describeJsonError(e) else describeYamlError(e)
+                    "Error: " + if (toYaml) describeJsonError(e, input) else describeYamlError(e)
                 } catch (e: StackOverflowError) {
                     "Error: The document nests too deeply or refers to itself through an anchor."
                 }

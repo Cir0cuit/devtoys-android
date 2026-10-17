@@ -176,7 +176,8 @@ class CsvParserTest {
     @Test
     fun jsonInputIsDetectedAndErrorsAreReported() {
         assertTrue(readCsvTable("  [{\"a\":1}]", null, true).fromJson)
-        assertTrue(readCsvTable("[1,", null, true).error != null)
+        val error = readCsvTable("[1,", null, true).error!!
+        assertTrue(error, error.startsWith("Couldn't read the input as JSON. Line 1, column ") && !error.contains("path $"))
     }
 
     @Test

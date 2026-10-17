@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.xml.sax.InputSource
+import org.xml.sax.SAXParseException
 import java.io.StringReader
 import javax.xml.parsers.DocumentBuilderFactory
 
@@ -156,5 +157,13 @@ class XmlFormatterTest {
     fun xpathInvalidExpressionAndInvalidXml() {
         assertTrue(evaluateXPath("<r/>", "//i[")?.error != null)
         assertNull(evaluateXPath("<r>", "//r"))
+        val error = evaluateXPath("<r/>", "//to/text()[")!!.error!!
+        assertFalse(error, error.contains(".."))
+    }
+
+    @Test
+    fun androidPullParserMessageIsCleanedUp() {
+        val e = SAXParseException("expected: /b read: a (position:END_TAG </a>@1:12 in java.io.StringReader@250ebe8)", null, null, 1, 12)
+        assertEquals("Line 1, column 12: expected </b> but found </a>", xmlErrorMessage(e))
     }
 }

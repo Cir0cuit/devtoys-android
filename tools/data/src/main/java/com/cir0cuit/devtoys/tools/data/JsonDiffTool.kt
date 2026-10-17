@@ -20,13 +20,12 @@ import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolCategory
 import com.cir0cuit.devtoys.tools.base.ToolDescriptor
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /** Returns (summary, change list) or throws IllegalArgumentException naming the input that failed to parse. */
 internal fun compareJson(original: String, changed: String, ignoreArrayOrder: Boolean): Pair<String, String> {
     fun parse(text: String, name: String) = try { parseJson(text) } catch (e: Exception) {
-        throw IllegalArgumentException("$name JSON, ${describeJsonError(e).replaceFirstChar { it.lowercase() }}")
+        throw IllegalArgumentException("$name JSON, ${describeJsonError(e, text).replaceFirstChar { it.lowercase() }}")
     }
     val changes = diffJson(parse(original, "Original"), parse(changed, "Changed"), ignoreArrayOrder)
     return changeSummary(changes) to describeChanges(changes).ifEmpty { "The documents are equal." }
@@ -43,12 +42,13 @@ class JsonDiffTool : Tool {
         var changed by rememberCappedText("{\"stars\":43,\"name\":\"devtoys\",\"tags\":[\"json\",\"diff\"]}")
         var ignoreOrder by rememberSaveable { mutableStateOf(false) }
         var result by remember { mutableStateOf("" to "") }
+        val debounce = rememberDebounce()
         LaunchedEffect(original, changed, ignoreOrder) {
             if (original.isBlank() || changed.isBlank()) {
                 result = "" to ""
                 return@LaunchedEffect
             }
-            delay(300)
+            debounce.await(300)
             result = withContext(Dispatchers.Default) {
                 try { compareJson(original, changed, ignoreOrder) } catch (e: Exception) { "" to "Error: ${e.message}" }
             }

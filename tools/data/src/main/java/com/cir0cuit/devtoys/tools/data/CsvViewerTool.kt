@@ -35,11 +35,9 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
-import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import java.math.BigDecimal
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -76,7 +74,6 @@ private val csvInputSaver = Saver<MutableState<String>, String>(
 
 class CsvViewerTool : Tool {
     override val descriptor = ToolDescriptor("csv-viewer", "CSV Viewer & Converter", "View CSV or JSON as a table and convert it", Icons.Default.GridOn, ToolCategory.CONVERTERS, listOf("csv", "tsv", "table", "viewer", "html", "markdown", "json", "sql"), accepts = setOf(ShareKind.TEXT), fileTypes = setOf("csv", "tsv"))
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
         var input by rememberSaveable(saver = csvInputSaver) { mutableStateOf("id,name,age\n1,Alice,30\n2,Bob,25") }
         OnSharedText { input = it }
@@ -88,8 +85,9 @@ class CsvViewerTool : Tool {
         var tableName by rememberSaveable { mutableStateOf("my_table") }
         var emptyAsNull by rememberSaveable { mutableStateOf(false) }
         var table by remember { mutableStateOf<CsvTable?>(null) }
+        val debounce = rememberDebounce()
         LaunchedEffect(input, delimiterChoice, hasHeader) {
-            delay(200)
+            debounce.await(200)
             table = withContext(Dispatchers.Default) { readCsvTable(input, CSV_DELIMITERS.getOrNull(delimiterChoice - 1), hasHeader) }
         }
 
@@ -157,14 +155,15 @@ class CsvViewerTool : Tool {
 
             val current = table
             val fromJson = current?.fromJson == true
+            // What Auto would pick, whichever delimiter is selected; detection only scans the first record.
+            val autoDelimiter = remember(input) { detectCsvDelimiter(input) }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                CsvSelect(
+                SelectField(
                     label = "Delimiter",
-                    options = DELIMITER_LABELS.indices.toList(),
                     selected = delimiterChoice,
+                    options = DELIMITER_LABELS.indices.toList(),
                     optionLabel = { i ->
-                        val detected = current?.delimiter
-                        if (i == 0 && detected != null && !fromJson) "Auto: ${DELIMITER_LABELS[CSV_DELIMITERS.indexOf(detected) + 1].lowercase()}"
+                        if (i == 0 && current != null && !fromJson) "Auto: ${DELIMITER_LABELS[CSV_DELIMITERS.indexOf(autoDelimiter) + 1].lowercase()}"
                         else DELIMITER_LABELS[i]
                     },
                     onSelect = { delimiterChoice = it },
@@ -177,10 +176,10 @@ class CsvViewerTool : Tool {
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                CsvSelect(
+                SelectField(
                     label = "Export as",
-                    options = CSV_EXPORTS.indices.toList(),
                     selected = exportIndex,
+                    options = CSV_EXPORTS.indices.toList(),
                     optionLabel = { CSV_EXPORTS[it].label },
                     onSelect = { exportIndex = it },
                     modifier = Modifier.weight(1f)
@@ -235,7 +234,7 @@ class CsvViewerTool : Tool {
             val columns = remember(shown) { shown.maxOf { it.size } }
             val dataRows = rows.size - 1
             Text(
-                "%,d data rows, %d columns".format(dataRows, columns) +
+                "%,d data %s, %d %s".format(dataRows, if (dataRows == 1) "row" else "rows", columns, if (columns == 1) "column" else "columns") +
                     (if (dataRows > DISPLAY_ROWS) ", showing the first %,d".format(DISPLAY_ROWS) else "") +
                     (if (fromJson) ", read as JSON" else ""),
                 style = MaterialTheme.typography.labelMedium,
@@ -266,29 +265,6 @@ class CsvViewerTool : Tool {
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CsvSelect(label: String, options: List<Int>, selected: Int, optionLabel: (Int) -> String, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }, modifier = modifier) {
-        OutlinedTextField(
-            value = optionLabel(selected),
-            onValueChange = {},
-            readOnly = true,
-            singleLine = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { option ->
-                DropdownMenuItem(text = { Text(optionLabel(option)) }, onClick = { onSelect(option); expanded = false })
-            }
         }
     }
 }
@@ -306,8 +282,7 @@ internal fun readCsvTable(input: String, delimiter: Char?, hasHeader: Boolean): 
         return try {
             CsvTable(jsonToCsvRows(input), null, true)
         } catch (e: Exception) {
-            val reason = (e.cause?.message ?: e.message ?: "invalid JSON").substringBefore("\nSee ").trimEnd('.')
-            CsvTable(emptyList(), null, true, "Couldn't read the input as JSON: $reason. Use an array of objects, or CSV text.")
+            CsvTable(emptyList(), null, true, "Couldn't read the input as JSON. ${describeJsonError(e, input)} Use an array of objects, or CSV text.")
         }
     }
     val d = delimiter ?: detectCsvDelimiter(input)
@@ -410,7 +385,7 @@ private fun csvInferJsonValue(v: String): JsonElement = when {
  * the union of keys in first-seen order. An array of arrays is taken as rows as-is.
  */
 internal fun jsonToCsvRows(json: String): List<List<String>> {
-    val root = JsonParser.parseString(json)
+    val root = parseJson(json, lenient = true)
     val items = if (root.isJsonArray) root.asJsonArray.toList() else listOf(root)
     if (items.isEmpty()) return emptyList()
     if (items.all { it.isJsonArray }) return items.map { row -> row.asJsonArray.map(::csvJsonCell) }

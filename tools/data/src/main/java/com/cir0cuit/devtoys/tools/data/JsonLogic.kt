@@ -12,6 +12,7 @@ import com.google.gson.JsonSyntaxException
 import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
+import com.google.gson.stream.MalformedJsonException
 import org.yaml.snakeyaml.error.MarkedYAMLException
 import java.io.StringReader
 import java.math.BigDecimal
@@ -25,24 +26,58 @@ internal fun parseJson(input: String, lenient: Boolean = false): JsonElement {
     val reader = JsonReader(StringReader(input)).apply { setStrictness(if (lenient) Strictness.LENIENT else Strictness.STRICT) }
     val element = JsonParser.parseReader(reader)
     // JsonReader.toString() is "JsonReader at line X column Y path $"
-    if (reader.peek() != JsonToken.END_DOCUMENT) throw JsonSyntaxException("Unexpected content after the JSON value ${reader.toString().removePrefix("JsonReader ")}")
-    return element
+    val location = try {
+        if (reader.peek() == JsonToken.END_DOCUMENT) return element
+        reader.toString().removePrefix("JsonReader ")
+    } catch (e: MalformedJsonException) {
+        // A stray '}' or ':' fails peek() with "Expected value" at the character itself; every other failure
+        // is one past it. Shift to one past, which describeJsonError moves back onto the character.
+        val m = Regex("""at line (\d+) column (\d+)""").find(e.message.orEmpty()) ?: throw e
+        val column = m.groupValues[2].toInt() + if (e.message!!.startsWith("Expected value")) 1 else 0
+        "at line ${m.groupValues[1]} column $column"
+    }
+    throw JsonSyntaxException("Unexpected content after the JSON value $location")
 }
 
-/** Turns a Gson parse failure into "Line X, column Y: reason." without the troubleshooting URL. */
-internal fun describeJsonError(e: Throwable): String {
+/**
+ * Turns a Gson parse failure into "Line X, column Y: reason." without the troubleshooting URL.
+ * With the parsed [input], a column Gson reports one past the rejected character is moved back onto it.
+ */
+internal fun describeJsonError(e: Throwable, input: String? = null): String {
     var c = e
     while (c.cause != null && c.cause !== c) c = c.cause!!
     val msg = (c.message ?: "Invalid JSON").substringBefore("\nSee ").trim()
     val m = Regex("""^(.*?)\s*at line (\d+) column (\d+)""", RegexOption.DOT_MATCHES_ALL).find(msg)
-        ?: return "$msg."
+        ?: return "${msg.trimEnd('.')}."
     val raw = m.groupValues[1].trim()
     val reason = when {
-        raw.contains("lenient", ignoreCase = true) -> "malformed JSON (turn on Lenient to accept comments, single quotes and unquoted keys)"
+        raw.contains("lenient", ignoreCase = true) -> "malformed JSON"
         raw.isEmpty() -> "invalid JSON"
         else -> raw
     }
-    return "Line ${m.groupValues[2]}, column ${m.groupValues[3]}: $reason."
+    val line = m.groupValues[2].toInt()
+    val reported = m.groupValues[3].toInt()
+    val column = if (gsonColumnIsPastError(raw, input, line, reported)) (reported - 1).coerceAtLeast(1) else reported
+    return "Line $line, column $column: $reason."
+}
+
+private val GSON_READ_AHEAD_REASONS = Regex("""^(Unterminated (object|array)|Expected name|Expected ':'|Unexpected value)""")
+
+private fun isJsonLiteralChar(c: Char) = c !in "/\\;#={}[]:, \t\u000c\r\n"
+
+/**
+ * Gson reads structural characters, names and trailing content before rejecting them, so its column
+ * is then one past the character at fault. A rejected unquoted value is reported at its first character.
+ */
+private fun gsonColumnIsPastError(raw: String, input: String?, line: Int, column: Int): Boolean {
+    if (GSON_READ_AHEAD_REASONS.containsMatchIn(raw)) return true
+    if (input == null || !(raw.contains("lenient", ignoreCase = true) || raw.startsWith("Unexpected content"))) return false
+    // ponytail: a value right after a rejected '[', ',' or '=' still looks like a value start and stays one column late.
+    val text = input.splitToSequence('\n').elementAtOrNull(line - 1).orEmpty()
+    val at = text.getOrNull(column - 1)
+    val before = text.getOrNull(column - 2)
+    val atValueStart = at != null && isJsonLiteralChar(at) && (before == null || !isJsonLiteralChar(before))
+    return column > 1 && !atValueStart
 }
 
 internal fun describeYamlError(e: Throwable): String {

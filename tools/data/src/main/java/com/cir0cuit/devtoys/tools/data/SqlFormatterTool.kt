@@ -10,34 +10,40 @@ import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.ui.*
 import com.cir0cuit.devtoys.tools.base.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private val SQL_LAYOUTS = listOf("2 spaces", "4 spaces", "Minify")
+private val SQL_TYPES = arrayOf("application/sql", "text/*", "application/octet-stream")
 private val SQL_CASES = listOf("Uppercase" to SqlKeywordCase.UPPER, "Lowercase" to SqlKeywordCase.LOWER, "Keep case" to SqlKeywordCase.KEEP)
 
 class SqlFormatterTool : Tool {
     override val descriptor = ToolDescriptor("sql-formatter", "SQL Formatter", "Format or minify SQL queries", Icons.Default.Storage, ToolCategory.FORMATTERS, listOf("sql", "format", "minify", "query"), accepts = setOf(ShareKind.TEXT), fileTypes = setOf("sql"))
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable override fun Content(modifier: Modifier) {
-        var input by rememberSaveable { mutableStateOf("select id, name from users where active = 1 and age > 18 order by name") }
+        var input by rememberCappedText("select id, name from users where active = 1 and age > 18 order by name")
         OnSharedText { input = it }
         var layout by rememberSaveable { mutableStateOf(0) }
         var case by rememberSaveable { mutableStateOf(0) }
         var output by remember { mutableStateOf("") }
+        var unterminated by remember { mutableStateOf(false) }
+        val debounce = rememberDebounce()
         LaunchedEffect(input, layout, case) {
             if (input.isBlank()) {
                 output = ""
+                unterminated = false
                 return@LaunchedEffect
             }
-            delay(200)
+            debounce.await(200)
             val keywordCase = SQL_CASES[case].second
-            output = withContext(Dispatchers.Default) {
-                if (layout == 2) minifySql(input, keywordCase) else formatSql(input, if (layout == 0) 2 else 4, keywordCase)
+            val (text, open) = withContext(Dispatchers.Default) {
+                val formatted = if (layout == 2) minifySql(input, keywordCase) else formatSql(input, if (layout == 0) 2 else 4, keywordCase)
+                formatted to hasUnterminatedSql(input)
             }
+            output = text
+            unterminated = open
         }
         ToolScaffold(descriptor.title, modifier = modifier) {
-            PasteableInput(input, { input = it }, "SQL input")
+            FileInput(input, { input = it }, "SQL input", mimeTypes = SQL_TYPES)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SQL_LAYOUTS.forEachIndexed { i, label ->
                     SegmentedButton(
@@ -60,7 +66,12 @@ class SqlFormatterTool : Tool {
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+            if (unterminated) {
+                ErrorText("A string, quoted name or comment is not closed, so everything after its start is kept as is.")
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             OutputPanel(output, label = if (layout == 2) "Minified SQL" else "Formatted SQL")
+            if (output.isNotEmpty()) OutputActions(output, "formatted.sql", "application/sql")
         }
     }
 }
@@ -72,8 +83,9 @@ private enum class SqlKind { WORD, LITERAL, LINE_COMMENT, BLOCK_COMMENT, OTHER }
 private class SqlToken(val text: String, val kind: SqlKind, val spaceBefore: Boolean)
 
 // Strings, quoted identifiers and comments are single tokens, so nothing inside them is ever rewritten.
+// An unclosed string, quoted identifier or block comment runs to the end of the input.
 private val SQL_TOKEN = Regex(
-    "'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|`[^`]*`|\\[[^\\]]*]|--[^\\n]*|/\\*[\\s\\S]*?\\*/" +
+    "'(?:[^']|'')*'?|\"(?:[^\"]|\"\")*\"?|`[^`]*`?|\\[[^\\]]*]|--[^\\n]*|/\\*[\\s\\S]*?(?:\\*/|\\z)" +
         "|[\\p{L}_][\\p{L}\\p{N}_$]*|\\d+(?:\\.\\d*)?(?:[eE][+-]?\\d+)?|\\.\\d+" +
         "|::|<=|>=|<>|!=|\\|\\||->>|->|\\S"
 )
@@ -94,6 +106,17 @@ private fun tokenizeSql(input: String): List<SqlToken> {
         end = m.range.last + 1
     }
     return tokens
+}
+
+private val CLOSED_SQL_QUOTE = Regex("'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|`[^`]*`|\\[[^\\]]*]")
+
+/** True when a string, quoted identifier or block comment in [input] is never closed. */
+internal fun hasUnterminatedSql(input: String): Boolean = tokenizeSql(input).any {
+    when (it.kind) {
+        SqlKind.LITERAL -> !CLOSED_SQL_QUOTE.matches(it.text)
+        SqlKind.BLOCK_COMMENT -> it.text.length < 4 || !it.text.endsWith("*/")
+        else -> false
+    }
 }
 
 private val SQL_KEYWORDS = setOf(

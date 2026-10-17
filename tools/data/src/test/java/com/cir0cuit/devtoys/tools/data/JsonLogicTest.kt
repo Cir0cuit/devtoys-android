@@ -42,6 +42,25 @@ class JsonLogicTest {
     }
 
     @Test
+    fun errorColumnPointsAtTheRejectedCharacter() {
+        fun at(input: String) = describeJsonError(errorOf { parseJson(input) }, input).substringBefore(":")
+        assertEquals("Line 2, column 1", at("{\nx"))           // unquoted key, read before it is rejected
+        assertEquals("Line 2, column 1", at("[1,\nx]"))        // unquoted value, reported where it starts
+        assertEquals("Line 2, column 3", at("{\"a\":1\n  x}")) // unterminated object
+        assertEquals("Line 1, column 4", at("{} x"))           // trailing content
+        assertEquals("Line 1, column 6", at("{\"a\":tru}"))
+        assertEquals("Line 1, column 2", at("{'a':1}"))
+    }
+
+    @Test
+    fun strayCloserAfterTheValueIsTrailingContent() {
+        for (lenient in listOf(true, false)) for ((input, column) in listOf("{\"a\":1}}" to 8, "{\"a\":1}]" to 8, "[1] :" to 5)) {
+            val msg = describeJsonError(errorOf { parseJson(input, lenient) }, input)
+            assertEquals("$input lenient=$lenient", "Line 1, column $column: Unexpected content after the JSON value.", msg)
+        }
+    }
+
+    @Test
     fun escapeAndUnescape() {
         val text = "{\"a\":\"x\"}\n<b>"
         val escaped = escapeJsonString(text)
@@ -81,6 +100,43 @@ class JsonLogicTest {
         )
         assertEquals("{\"a\":2,\"b\":1}", yamlToJson("b: 1\na: 2\n", JsonIndent.MINIFY, true))
         assertEquals("", yamlToJson("", JsonIndent.MINIFY, false))
+    }
+
+    @Test
+    fun yamlUsesTheCoreSchema() {
+        val yaml = "on: yes\nver: 1.10\nd: 2024-01-01\nn: ~\nzip: 012\noct: 0o17\nhex: 0x1F\nt: True\nf: FALSE\n" +
+            "time: 1:30\ninf: -.inf\nbase: &a {x: 1}\nref: *a\nm:\n  <<: *a\n  y: 2\n"
+        assertEquals(
+            parseJson(
+                "{\"on\":\"yes\",\"ver\":1.1,\"d\":\"2024-01-01\",\"n\":null,\"zip\":12,\"oct\":15,\"hex\":31,\"t\":true,\"f\":false," +
+                    "\"time\":\"1:30\",\"inf\":\"-Infinity\",\"base\":{\"x\":1},\"ref\":{\"x\":1},\"m\":{\"x\":1,\"y\":2}}"
+            ),
+            parseJson(yamlToJson(yaml, JsonIndent.MINIFY, false))
+        )
+        assertEquals("{\"on\":\"off\"}", yamlToJson("on: off\n", JsonIndent.MINIFY, false))
+    }
+
+    @Test
+    fun jsonToYamlQuotesStringsThatYaml11Or12WouldRetype() {
+        val json = "{\"a\":\"0o17\",\"b\":\"on\",\"c\":\"012\",\"d\":\"2024-01-01\",\"e\":\"null\",\"f\":\"1:30\"}"
+        val yaml = jsonToYaml(json, 2, false, false)
+        assertEquals(parseJson(json), parseJson(yamlToJson(yaml, JsonIndent.MINIFY, false)))
+        val yaml11 = Yaml().load<Map<String, Any?>>(yaml)
+        assertEquals("on", yaml11["b"])
+        assertEquals("2024-01-01", yaml11["d"])
+    }
+
+    @Test
+    fun treeFollowsSortKeys() {
+        val (_, tree) = runJsonTool("{\"b\":1,\"a\":{\"d\":2,\"c\":3}}", JsonMode.FORMAT, JsonIndent.TWO, sort = true, lenient = false)
+        assertEquals(listOf("a", "b"), tree!!.asJsonObject.keySet().toList())
+        assertEquals(listOf("c", "d"), tree.asJsonObject["a"].asJsonObject.keySet().toList())
+    }
+
+    @Test
+    fun diffErrorDoesNotMentionLenient() {
+        val msg = runCatching { compareJson("[1]", "[3,1,2],}", false) }.exceptionOrNull()!!.message!!
+        assertTrue(msg, msg.startsWith("Changed JSON, line 1, column ") && !msg.contains("Lenient"))
     }
 
     @Test

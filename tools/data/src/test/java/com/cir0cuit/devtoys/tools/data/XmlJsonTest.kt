@@ -47,6 +47,20 @@ class XmlJsonTest {
     }
 
     @Test
+    fun conversionErrorsAreReadable() {
+        val parse = convertXmlJson("{\"a\":1}\nx", toXml = true, rootName = "").error!!
+        assertTrue(parse, parse.startsWith("Couldn't parse the input. Line ") && !parse.contains("setStrictness"))
+        // Gson reports one column past an unquoted key; the message points at the key itself.
+        val atLineStart = convertXmlJson("{\nx: 1}", toXml = true, rootName = "").error!!
+        assertTrue(atLineStart, atLineStart.startsWith("Couldn't parse the input. Line 2, column 1:"))
+        val shape = convertXmlJson("{\"a\":1,\"b\":2}", toXml = true, rootName = "").error!!
+        assertTrue(shape, shape.startsWith("The JSON needs exactly one top-level key"))
+        val xml = convertXmlJson("<a><b>x</a>", toXml = false, rootName = "")
+        assertTrue(xml.error!!, xml.error!!.startsWith("Couldn't parse the input. Line 1, column "))
+        assertEquals(false, xml.toXml)
+    }
+
+    @Test
     fun xmlTextIsEscaped() {
         val xml = jsonToXml("{\"a\":\"<&>\"}", "")
         assertTrue(xml, xml.contains("<a>&lt;&amp;&gt;</a>"))
