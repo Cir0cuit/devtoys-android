@@ -26,13 +26,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cir0cuit.devtoys.core.designsystem.LocalSlabColor
@@ -41,11 +47,32 @@ import com.cir0cuit.devtoys.tools.base.Tool
 import com.cir0cuit.devtoys.tools.base.ToolRegistry
 import kotlinx.coroutines.launch
 
-internal fun Tool.matches(query: String): Boolean = with(descriptor) {
-    title.contains(query, ignoreCase = true) ||
-        description.contains(query, ignoreCase = true) ||
-        keywords.any { it.contains(query, ignoreCase = true) }
+/**
+ * Search rank of a tool for [query], lower is better, or null when it does not match.
+ * Every word of the query must match somewhere. Per word: title prefix 0, start of a title word 1,
+ * anywhere in the title 2, description or keywords 3; the word ranks are summed.
+ */
+internal fun searchRank(title: String, description: String, keywords: List<String>, query: String): Int? {
+    val words = query.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return null
+    val t = title.lowercase()
+    val rest = keywords.map { it.lowercase() } + description.lowercase()
+    return words.sumOf { word ->
+        when {
+            t.startsWith(word) -> 0
+            Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(word)).containsMatchIn(t) -> 1
+            word in t -> 2
+            rest.any { word in it } -> 3
+            else -> return null
+        }.toInt()
+    }
 }
+
+/** Tools matching [query], best match first; ties keep registry order. */
+internal fun searchTools(tools: List<Tool>, query: String): List<Tool> =
+    tools.mapNotNull { tool -> with(tool.descriptor) { searchRank(title, description, keywords, query) }?.let { tool to it } }
+        .sortedBy { it.second }
+        .map { it.first }
 
 @Composable
 fun ToolsListScreen(
@@ -71,14 +98,25 @@ fun ToolsListScreen(
         onToggleFavorite = { scope.launch { settingsRepository.toggleFavorite(tool.descriptor.id) } }
     )
 
+    // On a short screen (a phone in landscape) the keyboard leaves room for little more than the
+    // title and the search field, so the title gives way while searching and results stay visible.
+    var searchFocused by remember { mutableStateOf(false) }
+    val shortScreen = LocalConfiguration.current.screenHeightDp < 480
+    val showTitle = !searchFocused || !shortScreen
+    // The list stays anchored on the search field when the title comes back above it
+    // (search unfocused, or back from a tool), which would leave the title off-screen.
+    LaunchedEffect(showTitle) {
+        if (showTitle && shortScreen && listState.firstVisibleItemIndex <= 1) listState.scrollToItem(0)
+    }
+
     LazyColumn(modifier = modifier.fillMaxSize(), state = listState) {
-        item(key = "title") { ScreenTitle("DevToys") }
+        if (showTitle) item(key = "title") { ScreenTitle("DevToys") }
         item(key = "search") {
-            SearchField(searchQuery, onSearchQueryChange, toolCount = allTools.size)
+            SearchField(searchQuery, onSearchQueryChange, toolCount = allTools.size, Modifier.onFocusChanged { searchFocused = it.isFocused })
         }
 
         if (query.isNotEmpty()) {
-            val results = allTools.filter { it.matches(query) }
+            val results = searchTools(allTools, query)
             if (results.isEmpty()) {
                 item(key = "empty") {
                     Text(
@@ -116,12 +154,12 @@ fun ToolsListScreen(
 }
 
 @Composable
-private fun SearchField(query: String, onQueryChange: (String) -> Unit, toolCount: Int) {
+private fun SearchField(query: String, onQueryChange: (String) -> Unit, toolCount: Int, modifier: Modifier = Modifier) {
     val slab = LocalSlabColor.current
     TextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         placeholder = { Text("Search $toolCount tools") },

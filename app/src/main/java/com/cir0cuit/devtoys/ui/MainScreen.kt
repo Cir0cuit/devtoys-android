@@ -1,8 +1,12 @@
 package com.cir0cuit.devtoys.ui
 
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import com.cir0cuit.devtoys.core.ui.readTextFile
 import com.cir0cuit.devtoys.tools.base.ShareKind
 import com.cir0cuit.devtoys.tools.base.extension
@@ -83,8 +87,23 @@ fun MainScreen(
     // What that tool receives: the share itself, or a shared file read as text for tools that only take text.
     var delivered by remember { mutableStateOf<SharedContent?>(null) }
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    // A focused field that leaves composition keeps the keyboard up, so drop focus before switching screens.
+    val dropFocus: () -> Unit = {
+        focusManager.clearFocus(force = true)
+        keyboard?.hide()
+    }
+
+    // Compose's hide() is ignored by some IMEs (Samsung) once the search field has left composition,
+    // so also close the keyboard at the window level whenever the open tool changes.
+    val view = LocalView.current
+    LaunchedEffect(activeToolId) {
+        context.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(view.windowToken, 0)
+    }
 
     val openTool: (Tool) -> Unit = { tool ->
+        dropFocus()
         activeToolId = tool.descriptor.id
         scope.launch { settingsRepository.addRecent(tool.descriptor.id) }
     }
@@ -93,6 +112,7 @@ fun MainScreen(
         if (activeTool != null) {
             val id = activeTool.descriptor.id
             val close = {
+                dropFocus()
                 activeToolId = null
                 if (shareTarget != null) {
                     shareTarget = null
