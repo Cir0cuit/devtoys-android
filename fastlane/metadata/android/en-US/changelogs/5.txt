@@ -1,0 +1,2 @@
+- The open source licenses screen now credits the bundled IBM Plex fonts, the EFF passphrase word list and the IEEE MAC vendor registry
+- The privacy policy now states that the app requests no permissions and reads the clipboard only when you tap Paste
