@@ -1,0 +1,15 @@
+{
+  "uniqueId": "org.eff:large-wordlist",
+  "name": "EFF Large Wordlist for Passphrases",
+  "description": "Word list used by the Password Generator for passphrases.",
+  "website": "https://www.eff.org/dice",
+  "developers": [
+    {
+      "name": "Electronic Frontier Foundation",
+      "organisationUrl": "https://www.eff.org"
+    }
+  ],
+  "licenses": [
+    "CC-BY-3.0-US"
+  ]
+}

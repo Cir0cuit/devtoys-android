@@ -1,0 +1,6 @@
+{
+  "hash": "IEEE-RA-public-listing",
+  "name": "IEEE Registration Authority public listing",
+  "url": "https://standards-oui.ieee.org/oui/oui.txt",
+  "content": "The MA-L (OUI) assignments are published by the IEEE Registration Authority at https://standards-oui.ieee.org/oui/oui.txt. DevToys bundles a copy of that listing for offline vendor lookup."
+}

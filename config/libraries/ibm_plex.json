@@ -1,0 +1,15 @@
+{
+  "uniqueId": "com.ibm:plex",
+  "name": "IBM Plex Sans and IBM Plex Mono",
+  "description": "Fonts used for the app's text and code.",
+  "website": "https://github.com/IBM/plex",
+  "developers": [
+    {
+      "name": "IBM Corp.",
+      "organisationUrl": "https://www.ibm.com"
+    }
+  ],
+  "licenses": [
+    "OFL-1.1"
+  ]
+}
