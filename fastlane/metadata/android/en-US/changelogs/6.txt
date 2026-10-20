@@ -1,0 +1,4 @@
+- MAC Address Lookup no longer bundles the IEEE vendor list. Download oui.txt from the IEEE and import it in the tool; it stays on your device
+- Markdown previews show images as their alt text
+- The licenses screen credits the WHATWG and Unicode data used by the HTML Entity Encoder
+- The description states that the app is not affiliated with the DevToys project
