@@ -128,6 +128,16 @@ class NetToolsTest {
         assertEquals(mapOf("286FB9" to "Nokia Shanghai Bell Co., Ltd."), map)
     }
 
+    @Test fun ouiParsingToleratesCrlf() {
+        assertEquals(mapOf("286FB9" to "Nokia"), parseOui(sequenceOf("286FB9     (base 16)\t\tNokia\r")))
+    }
+
+    @Test fun ouiListingNeedsAThousandPrefixes() {
+        val prefixes = (0 until 1000).associate { "%06X".format(it) to "Vendor" }
+        assertTrue(isOuiListing(prefixes))
+        assertFalse(isOuiListing(prefixes - "000000"))
+    }
+
     @Test fun extractsMacsFromArpOutput() {
         val text = """
             ? (192.168.1.1) at 00:1a:2b:3c:4d:5e [ether] on wlan0
