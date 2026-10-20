@@ -42,7 +42,6 @@ dependencies {
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
     implementation("io.noties.markwon:html:4.6.2")
-    implementation("io.noties.markwon:image:4.6.2")
     implementation("io.noties.markwon:linkify:4.6.2")
     // Already pulled in by Markwon; declared because MarkdownFormatting.kt renders HTML with it directly.
     implementation("com.atlassian.commonmark:commonmark:0.13.0")

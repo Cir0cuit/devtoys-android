@@ -5,6 +5,5 @@
     <string name="library_io_noties_markwon_ext_tables_libraryName">Markwon: Tables</string>
     <string name="library_io_noties_markwon_ext_tasklist_libraryName">Markwon: Task List</string>
     <string name="library_io_noties_markwon_html_libraryName">Markwon: HTML</string>
-    <string name="library_io_noties_markwon_image_libraryName">Markwon: Image</string>
     <string name="library_io_noties_markwon_linkify_libraryName">Markwon: Linkify</string>
 </resources>

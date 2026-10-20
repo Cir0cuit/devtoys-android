@@ -9,11 +9,8 @@
 
 # Add any project specific keep rules here:
 
--dontwarn com.caverock.androidsvg.SVG
--dontwarn com.caverock.androidsvg.SVGParseException
 -dontwarn java.beans.BeanInfo
 -dontwarn java.beans.FeatureDescriptor
 -dontwarn java.beans.IntrospectionException
 -dontwarn java.beans.Introspector
 -dontwarn java.beans.PropertyDescriptor
--dontwarn pl.droidsonroids.gif.GifDrawable
