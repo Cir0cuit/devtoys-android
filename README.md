@@ -26,6 +26,8 @@ without pasting your data into a website.
 
 A developer, IT admin or tinkerer often needs to decode a JWT, check a subnet, format some JSON or generate a UUID, and usually has to paste the data into a website to do it. DevToys for Android puts those tools on your phone and keeps the data there. Everything runs on the device. The app has no INTERNET permission, so nothing you paste into it can leave your phone.
 
+DevToys for Android is an independent Android adaptation of [DevToys](https://github.com/DevToys-app/DevToys), the MIT-licensed developer toolbox for Windows, macOS and Linux. It is not affiliated with or endorsed by the DevToys project and shares no code with it.
+
 ## Highlights
 
 - **Offline and private:** no network access, no runtime permissions, no ads, no subscriptions, no telemetry, no analytics.
@@ -117,7 +119,7 @@ The text encoders share a few behaviours. They encode and decode live and can se
 
 - **CIDR Calculator:** IPv4 and IPv6 subnet details: network, mask, wildcard, broadcast, host range and address type. Splits a network by prefix or by host counts (VLSM) and exports the result as CSV. Converts an address range to CIDR blocks, merges overlapping blocks, and tests which block an address belongs to.
 - **IP Address Converter:** converts IPv4 and IPv6 between dotted, compressed, expanded, decimal, hex and binary forms. Shows the PTR name, address type and mapped, 6to4 and NAT64 forms, and generates a random ULA prefix.
-- **MAC Address Lookup:** finds the vendor in an offline copy of the IEEE OUI registry and shows the address type, other notations, EUI-64 and link-local IPv6. Extracts every MAC address from pasted `arp` or `ip neigh` output.
+- **MAC Address Lookup:** shows the address type, other notations, EUI-64 and link-local IPv6. Vendor names come from an IEEE `oui.txt` that you download from IEEE and import; the app ships none. Extracts every MAC address from pasted `arp` or `ip neigh` output.
 - **Chmod Calculator:** converts between octal, symbolic, `ls -l` and chmod expressions such as `u+x,go-w`, including setuid, setgid and sticky bits. Works out umask defaults and the umask needed for a given mode.
 - **Well-Known Ports:** searchable list of common TCP and UDP ports, plus a random free port in the dynamic range.
 - **HTTP Reference:** status codes with explanations and specs, HTTP methods and their properties, and common headers with examples.
@@ -240,5 +242,4 @@ The app's Settings list every library in the APK with its license.
 
 - IBM Plex Sans and IBM Plex Mono, © IBM Corp., SIL Open Font License 1.1 ([core/designsystem/FONTS-LICENSE.txt](core/designsystem/FONTS-LICENSE.txt)).
 - EFF Large Wordlist for passphrases, © Electronic Frontier Foundation, CC BY 3.0 US.
-- IEEE MA-L (OUI) registry, as published by the IEEE Registration Authority, used for MAC vendor lookup.
-- HTML named character references from the WHATWG HTML standard and emoji data from Unicode, used in the HTML Entity Encoder.
+- HTML named character references from the WHATWG HTML Standard, © WHATWG (Apple, Google, Mozilla, Microsoft), BSD 3-Clause License; emoji data from Unicode Emoji 15.0, © Unicode, Inc., Unicode License v3. Used in the HTML Entity Encoder.

@@ -19,3 +19,5 @@
 <p>Share text, images or files to DevToys from other apps, or open .json, .xml, .yaml, .csv, .sql, .md, .pem, .gz and other files from a file manager. Search, favorites, recently used tools, light, dark and AMOLED themes, accent colors with dynamic color, and a high-contrast mode.</p>
 
 <p>No ads, no subscriptions, no analytics, no telemetry, no crash reporting. DevToys does not request the INTERNET permission.</p>
+
+<p>DevToys for Android is an independent Android adaptation of <a href="https://github.com/DevToys-app/DevToys">DevToys</a>, the MIT-licensed developer toolbox for Windows, macOS and Linux. It is not affiliated with or endorsed by the DevToys project and shares no code with it.</p>

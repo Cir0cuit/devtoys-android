@@ -19,6 +19,8 @@ object LegalTexts {
         See the License for the specific language governing permissions and
         limitations under the License.
 
+        DevToys for Android is an independent Android adaptation of DevToys (https://github.com/DevToys-app/DevToys), the MIT-licensed developer toolbox for Windows, macOS and Linux. It is not affiliated with or endorsed by the DevToys project and shares no code with it.
+
         Source code: $REPO_URL
     """.trimIndent()
 
@@ -39,7 +41,7 @@ object LegalTexts {
         Because the Application does not collect any data, there is absolutely no data sharing, selling, or distribution to any third parties, advertisers, or analytics providers. I do not track your behavior, nor do I build profiles based on your use of the Application.
 
         4. DEVICE PERMISSIONS
-        The Application does not request any device permissions and has no network access. Taking a photo, picking an image and opening or saving a file go through Android's own screens, and the Application receives only the item you choose. The Application reads the clipboard only when you tap a Paste button, and writes to it only when you copy a result.
+        The Application does not request any device permissions and has no network access. Taking a photo, picking an image and opening or saving a file go through Android's own screens, and the Application receives only the item you choose. The Application reads the clipboard only when you tap a Paste button, and writes to it only when you copy a result. If you import a MAC vendor list, it is stored only in the app's private storage and never leaves your device.
 
         5. CONTENT SHARED FROM OTHER APPS
         You can send text, images or files to the Application through the Android share menu, or open files with it from a file manager. Shared or opened content is only passed to the tool you choose (or the one tool that handles that file type), processed on your device and kept no longer than that tool keeps its input. It is never stored elsewhere or transmitted. The Application receives only what you explicitly share or open.
