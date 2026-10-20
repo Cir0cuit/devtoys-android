@@ -1,0 +1,15 @@
+{
+  "uniqueId": "org.whatwg:html-named-character-references",
+  "name": "HTML Standard named character references",
+  "description": "Named character reference table used by the HTML Entity Encoder.",
+  "website": "https://html.spec.whatwg.org/multipage/named-characters.html",
+  "developers": [
+    {
+      "name": "WHATWG (Apple, Google, Mozilla, Microsoft)",
+      "organisationUrl": "https://whatwg.org"
+    }
+  ],
+  "licenses": [
+    "WHATWG-BSD-3-Clause"
+  ]
+}

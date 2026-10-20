@@ -1,0 +1,16 @@
+{
+  "uniqueId": "org.unicode:emoji-test",
+  "artifactVersion": "15.0",
+  "name": "Unicode Emoji data (emoji-test.txt)",
+  "description": "Emoji list and grouping used by the HTML Entity Encoder.",
+  "website": "https://www.unicode.org/reports/tr51/",
+  "developers": [
+    {
+      "name": "Unicode, Inc.",
+      "organisationUrl": "https://www.unicode.org"
+    }
+  ],
+  "licenses": [
+    "Unicode-3.0"
+  ]
+}

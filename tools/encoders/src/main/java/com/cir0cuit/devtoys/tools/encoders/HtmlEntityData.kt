@@ -1,5 +1,17 @@
 package com.cir0cuit.devtoys.tools.encoders
 
+/**
+ * Named character references from the WHATWG HTML Standard
+ * (https://html.spec.whatwg.org/multipage/named-characters.html).
+ * Copyright © WHATWG (Apple, Google, Mozilla, Microsoft). Portions incorporated into
+ * source code are licensed under the BSD 3-Clause License.
+ *
+ * Emoji list and grouping from emoji-test.txt, Unicode Emoji 15.0
+ * (https://unicode.org/Public/emoji/15.0/emoji-test.txt), © 2022 Unicode®, Inc.,
+ * licensed under the Unicode License v3.
+ *
+ * Full licence texts: config/licenses/WHATWG-BSD-3-Clause.json and config/licenses/Unicode-3.0.json.
+ */
 object HtmlEntityData {
     val categoriesMap = mapOf(
         "HTML Entities: A" to listOf(
