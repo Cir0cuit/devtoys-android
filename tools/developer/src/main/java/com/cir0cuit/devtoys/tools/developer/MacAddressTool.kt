@@ -158,17 +158,19 @@ private fun VendorListCard(vendors: Map<String, String>?, importedAt: Long, onCh
             Text("Vendor list", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(4.dp))
             Text(
-                if (imported) {
+                if (vendors == null) {
+                    "Loading the vendor list..."
+                } else if (imported) {
                     val date = DateTimeFormatter.ofPattern("d MMM yyyy").format(Instant.ofEpochMilli(importedAt).atZone(ZoneId.systemDefault()))
-                    "%,d vendor prefixes, imported %s.".format(vendors!!.size, date)
+                    "%,d vendor prefixes, imported %s.".format(vendors.size, date)
                 } else {
-                    "Vendor names come from the IEEE public OUI listing, which DevToys doesn't include. Download oui.txt from the IEEE in your browser, then import it here. The file stays on this device."
+                    "Vendor names come from the IEEE public OUI listing, which DevToys doesn't include. Tap Download to open oui.txt in your browser, save it with the browser's download option, then import it here. The file stays on this device."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (vendors != null) Spacer(Modifier.height(12.dp))
+            if (vendors != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (imported) {
                     OutlinedButton(onClick = pick, enabled = !busy) { Text("Replace") }
                     OutlinedButton(
@@ -182,8 +184,8 @@ private fun VendorListCard(vendors: Map<String, String>?, importedAt: Long, onCh
                         enabled = !busy
                     ) { Text("Remove") }
                 } else {
-                    OutlinedButton(onClick = { openUrl(context, OUI_URL) }) { Text("Download from IEEE") }
-                    FilledTonalButton(onClick = pick, enabled = !busy && vendors != null) { Text("Import oui.txt") }
+                    OutlinedButton(onClick = { openUrl(context, OUI_URL) }) { Text("Download") }
+                    FilledTonalButton(onClick = pick, enabled = !busy) { Text("Import") }
                 }
             }
             if (busy) {
